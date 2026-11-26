@@ -19,8 +19,9 @@ $ErrorActionPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 # 放行：exit 0＋stdout 一行 JSON（Claude Code 把 hookSpecificOutput.additionalContext 交給主對話）
-function Pass([string]$how, [string]$agent = '', [string]$case = '', [string]$gateCode = '未呼叫') {
+function Pass([string]$how, [string]$agent = '', [string]$case = '', [string]$gateCode = '未呼叫', [string[]]$warnings = @()) {
     $msg = "grill-gate 放行：$how；代理=$(if ($agent) { $agent } else { '（無）' })；案子=$(if ($case) { $case } else { '（未指到）' })；閘 exit=$gateCode"
+    foreach ($w in @($warnings | Where-Object { $_ })) { $msg += "`n$w" }   # 閘的「grill-gate 警告：…」（不擋，2026-11-25）
     $json = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; additionalContext = $msg } } | ConvertTo-Json -Compress -Depth 4
     [Console]::Out.WriteLine($json)
     exit 0
@@ -122,7 +123,9 @@ if ($caseMatch.Success) {
             $code = $LASTEXITCODE
             if ($code -eq 0) {
                 $passLine = @($gateOut -split "`r?`n" | Where-Object { $_ -match 'GRILL_GATE=pass' } | Select-Object -First 1)
-                Pass "validate-grill-gate 通過$(if ($passLine) { "（$($passLine[0].Trim())）" })" $agentType $caseName '0'
+                # 2026-11-25：閘的警告（不擋）逐行帶進放行訊息，主對話才看得到
+                $warnLines = @($gateOut -split "`r?`n" | Where-Object { $_ -match '^\s*grill-gate 警告：' } | ForEach-Object { $_.Trim() })
+                Pass "validate-grill-gate 通過$(if ($passLine) { "（$($passLine[0].Trim())）" })" $agentType $caseName '0' $warnLines
             }
             if ($null -eq $code) {
                 [Console]::Error.WriteLine("🔴 grill-gate 攔截：叫不起 validate-grill-gate.ps1（$exe），寧可擋下也不放行。" + [Environment]::NewLine + $gateOut.Trim())

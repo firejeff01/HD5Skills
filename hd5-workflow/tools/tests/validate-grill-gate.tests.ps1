@@ -2,7 +2,11 @@
 .SYNOPSIS
   validate-grill-gate.ps1 離線測試（暫存資料夾造 case 與一份「依地圖規則產生的合格功能地圖」；不依賴專案自己的 verify/，母版也能跑）。
   執行：pwsh -File tests/validate-grill-gate.tests.ps1（也會用 Windows PowerShell 5.1 跑一輪）；最後一行要是 ALL PASSED。
+  2026-11-25：閘改在本程序內呼叫（& 腳本；腳本的 exit 只結束它自己），5.1 那一輪整支用 -Inner 在 5.1 裡再跑一次。
+  原本每個情境都開一個 PowerShell 程序（約 1.3 秒／次），情境加到 80 多個後超過 install.ps1 跑測試的 180 秒上限。
+  開程序（-File）的 exit 碼語意另留幾個情境驗（見「-File 開程序」段）。
 #>
+param([switch]$Inner)
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $gate = (Resolve-Path (Join-Path $PSScriptRoot '..\validate-grill-gate.ps1')).Path
@@ -31,6 +35,8 @@ try { $loc = @((Join-Path $PSScriptRoot '..\_hd5-locate.ps1'), (Join-Path $PSScr
       $script:hasLegacyAlias = @($wfj.implementers | ForEach-Object { $_.gateAliases }) -contains 'csharp' } catch { }
 $script:fail = 0
 function Check($name, $cond) { if ($cond) { Write-Host "  ok   $name" } else { Write-Host "  FAIL $name" -ForegroundColor Red; $script:fail++ } }
+# 2026-11-25 使用者拍板：exit 14～16 改成警告——照樣判斷，exit 碼照舊（不擋派發），stdout 印「grill-gate 警告：…」
+function Warned($r, [string]$pat) { $r.Code -eq 0 -and (($r.Out -replace '\s+', '') -match ('grill-gate警告：.*' + [regex]::Escape(($pat -replace '\s+', '')))) }
 
 $b = [IO.File]::ReadAllBytes($gate)
 Check 'BOM（Windows PowerShell 5.1 讀中文訊息）' ($b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF)
@@ -43,7 +49,7 @@ function New-Case([string]$featureText, [string]$route = '四角色') {
     Set-Content (Join-Path $case 'pm\grill-x.md') '質詢輪結束：已拍板' -Encoding UTF8
     Set-Content (Join-Path $case 'sa\grill-x.md') '質詢輪結束：已拍板' -Encoding UTF8
     $spec = "## 5. 驗收條件`n- [ ] x"
-    if ($route) { $spec += "`n`n路線：$route，高風險：否，理由：測試" }
+    if ($route) { $spec += "`n`n路線：$route，高風險：否，外部系統：無，理由：測試" }
     Set-Content (Join-Path $case 'case_spec_content\spec_001.md') $spec -Encoding UTF8
     if ($null -ne $featureText) { Set-Content (Join-Path $case 'sa\x.feature') $featureText -Encoding UTF8 }
     return [pscustomobject]@{ Root = $root; Case = $case }
@@ -53,7 +59,7 @@ function New-BugCase([string]$specExtra = '', [string]$analysis) {
     $root = Join-Path ([IO.Path]::GetTempPath()) ('grillgate_' + [guid]::NewGuid().ToString('N'))
     $case = Join-Path $root 'AI_Service\spec\bug-y'
     New-Item -ItemType Directory -Force (Join-Path $case 'case_spec_content') | Out-Null
-    Set-Content (Join-Path $case 'case_spec_content\spec_001.md') "## 5. 驗收條件`n- [ ] 匯入更新寫回$specExtra`n`n**路線**：小問題，**高風險**：否，理由：單一匯入方法" -Encoding UTF8
+    Set-Content (Join-Path $case 'case_spec_content\spec_001.md') "## 5. 驗收條件`n- [ ] 匯入更新寫回$specExtra`n`n**路線**：小問題，**高風險**：否，**外部系統**：無，理由：單一匯入方法" -Encoding UTF8
     if ($null -ne $analysis) {
         New-Item -ItemType Directory -Force (Join-Path $case 'sa') | Out-Null
         Set-Content (Join-Path $case 'sa\bug-analysis.md') $analysis -Encoding UTF8
@@ -62,13 +68,38 @@ function New-BugCase([string]$specExtra = '', [string]$analysis) {
 }
 $fullAnalysis = "# bug 分析`n## 原因`nNoTracking`n## 影響範圍`n匯入`n## 同類位置`n2 處`n## 修法`nAsTracking`n## 待決事項`n待決事項：無"
 
-$exes = @([Environment]::ProcessPath)
+$selfExe = (Get-Process -Id $PID).Path   # 5.1 沒有 [Environment]::ProcessPath
 $ps5 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-if ((Test-Path $ps5) -and ($exes[0] -notlike '*WindowsPowerShell*')) { $exes += $ps5 }
 $cases = @()
-foreach ($exe in $exes) {
-    $tag = if ($exe -like '*WindowsPowerShell*') { '[PS5.1]' } else { '[pwsh]' }
-    function Run([string[]]$a) { $o = & $exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $gate @a 2>&1 | Out-String; [pscustomobject]@{ Code = $LASTEXITCODE; Out = $o } }
+foreach ($exe in @($selfExe)) {
+    $tag = if ($PSVersionTable.PSEdition -eq 'Desktop') { '[PS5.1]' } else { '[pwsh]' }
+    # 本程序內呼叫：閘用 Write-Error＋exit N；這裡把 ErrorActionPreference 放寬成 Continue 才不會被 Stop 轉成例外，exit N 會留在 $LASTEXITCODE
+    function Run([string[]]$a) {
+        # 字串陣列展開給腳本時「-Role」會被當成位置參數 ⇒ 轉成雜湊表（沒有值的是 switch，例 -Skip）
+        $h = @{}
+        for ($i = 0; $i -lt $a.Count; $i++) {
+            $k = $a[$i].TrimStart('-')
+            if ($i + 1 -lt $a.Count -and -not $a[$i + 1].StartsWith('-')) { $h[$k] = $a[$i + 1]; $i++ } else { $h[$k] = [switch]$true }
+        }
+        $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $global:LASTEXITCODE = 0
+        try { $o = & $gate @h 2>&1 | Out-String -Width 400; $code = $LASTEXITCODE } catch { $o = "例外：$($_.Exception.Message)"; $code = -1 } finally { $ErrorActionPreference = $eap }
+        [pscustomobject]@{ Code = $code; Out = $o }
+    }
+    # 開程序跑（-File）：只留幾個情境驗 exit 碼語意（hook 與 Codex 都是開程序呼叫）
+    # （5.1：原生程序的 stderr 在 ErrorActionPreference=Stop 下會變成例外，這裡同樣放寬成 Continue）
+    function RunFile([string[]]$a) {
+        $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try { $o = & $exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $gate @a 2>&1 | Out-String; $code = $LASTEXITCODE } finally { $ErrorActionPreference = $eap }
+        [pscustomobject]@{ Code = $code; Out = $o }
+    }
+
+    Write-Host "--- $tag -File 開程序：exit 碼照腳本的 exit N ---"
+    $fc = New-Case "@功能:$existing"; $cases += $fc
+    $r = RunFile @('-Role', 'backend', '-CasePath', $fc.Case, '-VerifyRoot', $realVerify); Check "$tag -File 合格案 ⇒ exit 0" ($r.Code -eq 0 -and $r.Out -match 'GRILL_GATE=pass')
+    Set-Content (Join-Path $fc.Case 'case_spec_content\spec_001.md') "路線：四角色，高風險：否，理由：沒寫外部系統" -Encoding UTF8
+    $r = RunFile @('-Role', 'sa', '-CasePath', $fc.Case); Check "$tag -File 沒寫外部系統 ⇒ 警告（exit 0）" ((Warned $r '外部系統'))
+    Set-Content (Join-Path $fc.Case 'case_spec_content\spec_001.md') "## 5" -Encoding UTF8
+    $r = RunFile @('-Role', 'sa', '-CasePath', $fc.Case); Check "$tag -File 沒寫路線 ⇒ exit 8" ($r.Code -eq 8)
 
     Write-Host "--- $tag 原本的質詢閘行為不變（四角色路線）---"
     $c = New-Case "@功能:$existing`nFeature: x"; $cases += $c
@@ -141,7 +172,7 @@ foreach ($exe in $exes) {
     Set-Content $sp "## 5. 驗收條件`n- [ ] x`n`n路線：四角色，理由：沒寫高風險" -Encoding UTF8
     $r = Run @('-Role', 'backend', '-CasePath', $rc.Case, '-VerifyRoot', $realVerify)
     Check "$tag 🔴 路線沒寫高風險 ⇒ exit 11" ($r.Code -eq 11)
-    Set-Content $sp "## 5. 驗收條件`n- [ ] x`n`n路線：四角色，高風險：是，理由：動到權限" -Encoding UTF8
+    Set-Content $sp "## 5. 驗收條件`n- [ ] x`n`n路線：四角色，高風險：是，外部系統：無，理由：動到權限" -Encoding UTF8
     $r = Run @('-Role', 'sa', '-CasePath', $rc.Case)
     Check "$tag 高風險派 SA 還不需要對抗輪 ⇒ pass" ($r.Code -eq 0 -and $r.Out -match 'risk=high')
     $r = Run @('-Role', 'backend', '-CasePath', $rc.Case, '-VerifyRoot', $realVerify)
@@ -152,7 +183,7 @@ foreach ($exe in $exes) {
     Set-Content (Join-Path $rc.Case 'sa\adversarial-review.md') "# 對抗輪`nA1 SQL 聚合錯誤：已修正（改 CTE）`n對抗結論：SA 已修正後可進 PG" -Encoding UTF8
     $r = Run @('-Role', 'backend', '-CasePath', $rc.Case, '-VerifyRoot', $realVerify)
     Check "$tag 對抗輪處理完 ⇒ pass 並列出檔名" ($r.Code -eq 0 -and $r.Out -match 'adversarial=sa/adversarial-review\.md')
-    Set-Content $sp "## 5. 驗收條件`n- [ ] x`n`n**路線**：四角色，**高風險**：是，理由：粗體也認" -Encoding UTF8
+    Set-Content $sp "## 5. 驗收條件`n- [ ] x`n`n**路線**：四角色，**高風險**：是，外部系統：無，理由：粗體也認" -Encoding UTF8
     $r = Run @('-Role', 'backend', '-CasePath', $rc.Case, '-VerifyRoot', $realVerify)
     Check "$tag 粗體「**高風險**：是」也認得" ($r.Code -eq 0 -and $r.Out -match 'risk=high')
 
@@ -230,10 +261,80 @@ foreach ($exe in $exes) {
     Check "$tag 四角色路線不檢查問卷回收（PM 自己在流程內收）" ($r.Code -eq 0)
     Remove-Item -LiteralPath (Join-Path $c.Case 'pm\spec_9_r1.html')
 
+    Write-Host "--- $tag 外部系統宣告與樣本對照表（2026-11-25，exit 14／15；#2164 R1 樣本不足）---"
+    $ec = New-Case "@功能:$existing"; $cases += $ec
+    $esp = Join-Path $ec.Case 'case_spec_content\spec_001.md'
+    Set-Content $esp "## 5. 驗收條件`n- [ ] x`n`n路線：四角色，高風險：否，理由：沒寫外部系統" -Encoding UTF8
+    $r = Run @('-Role', 'sa', '-CasePath', $ec.Case)
+    Check "$tag 🔴 spec_001 沒寫「外部系統：有｜無」⇒ 派 SA 印警告、不擋（exit 0）" ((Warned $r '外部系統') -and ($r.Out -replace '\s+', '') -match '外部系統')
+    $r = Run @('-Role', 'backend', '-CasePath', $ec.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 沒寫外部系統 ⇒ 派實作也印警告、不擋（exit 0）" ((Warned $r '外部系統'))
+    $r = Run @('-Role', 'backend', '-CasePath', $ec.Case, '-SkipRoute', '11-25 前已進 PG', '-Skip', '-VerifyRoot', $realVerify)
+    Check "$tag 舊案 -SkipRoute＋-Skip ⇒ 外部系統宣告一起略過" ($r.Code -eq 0 -and $r.Out -match 'route=skip')
+    Set-Content $esp "## 5. 驗收條件`n- [ ] x`n`n路線：四角色，高風險：否，理由：另一行寫`n**外部系統**：無" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $ec.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 「外部系統：無」寫在另一行（粗體）也認得 ⇒ pass（external=no）" ($r.Code -eq 0 -and $r.Out -match 'external=no' -and $r.Out -notmatch 'grill-gate 警告')
+    Set-Content $esp "## 5. 驗收條件`n- [ ] x`n`n路線：四角色，高風險：否，外部系統：有，理由：抓台電網頁" -Encoding UTF8
+    $r = Run @('-Role', 'sa', '-CasePath', $ec.Case)
+    Check "$tag 外部系統：有、派 SA 還不需要樣本表（SA 負責寫）⇒ pass" ($r.Code -eq 0 -and $r.Out -match 'external=yes')
+    $r = Run @('-Role', 'backend', '-CasePath', $ec.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 🔴 外部系統：有但沒有 sa/external-samples.md ⇒ 派實作印警告、不擋（exit 0）" ((Warned $r 'external-samples') -and ($r.Out -replace '\s+', '') -match 'external-samples\.md')
+    $smp = Join-Path $ec.Case 'sa\external-samples.md'
+    Set-Content $smp "# 外部系統樣本`n（還沒整理）" -Encoding UTF8
+    $r = Run @('-Role', 'qa', '-CasePath', $ec.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 樣本檔沒有樣本表 ⇒ 警告（exit 0）" ((Warned $r 'external-samples'))
+    Set-Content $smp "# 外部系統樣本`n| 變化 | 真實樣本 | 誰提供 | 開發階段實跑結果 |`n|---|---|---|---|" -Encoding UTF8
+    $r = Run @('-Role', 'qa', '-CasePath', $ec.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 樣本表一列都沒有 ⇒ 警告（exit 0）" ((Warned $r 'external-samples'))
+    Set-Content $smp "# 外部系統樣本`n| 變化 | 真實樣本 | 誰提供 | 開發階段實跑結果 |`n|---|---|---|---|`n| 高壓電力 | 電號 16776680211 | 開發 | 通過 |`n| 表燈營業用 |  | PM | — |" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $ec.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 🔴 有一列「真實樣本」空白 ⇒ 警告（exit 0） 並點名那種變化" ((Warned $r 'external-samples') -and ($r.Out -replace '\s+', '') -match '表燈營業用')
+    Set-Content $smp "# 外部系統樣本`n| 變化 | 真實樣本 | 誰提供 | 開發階段實跑結果 |`n|---|---|---|---|`n| 高壓電力 | 電號 16776680211 | 開發 | 通過 |`n| 表燈營業用 | 待提供 | PM | — |" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $ec.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 「待提供」沒寫誰 ⇒ 警告（exit 0）" ((Warned $r 'external-samples') -and ($r.Out -replace '\s+', '') -match '表燈營業用')
+    Set-Content $smp "# 外部系統樣本`n| 變化 | 真實樣本 | 誰提供 | 開發階段實跑結果 |`n|---|---|---|---|`n| 高壓電力 | 電號 16776680211 | 開發 | 通過 |`n| 表燈營業用 | 待提供（PM 黃） | PM | — |" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $ec.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 每列有樣本或「待提供（誰）」⇒ pass（samples=2）" ($r.Code -eq 0 -and $r.Out -match 'samples=2' -and $r.Out -notmatch 'grill-gate 警告')
+
+    Write-Host "--- $tag 驗收退回的新規則要先補質詢（2026-11-25，exit 16；#2164 R3／R4 規則定義晚）---"
+    $wc = New-Case "@功能:$existing"; $cases += $wc
+    New-Item -ItemType Directory -Force (Join-Path $wc.Case 'qa') | Out-Null
+    $rl = Join-Path $wc.Case 'qa\rework-log.md'
+    $rlHead = "# 退回紀錄`n| 輪次 | 退回原因 | 處理類別 | 根因類別 | 為什麼沒先抓到 | 修正 |`n|---|---|---|---|---|---|"
+    Set-Content $rl "$rlHead`n| R1（11/23） | 某電號抓不到 | 程式錯誤 | 樣本不足 | 只測一個電號 | abc123 |" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $wc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 退回紀錄只有程式錯誤 ⇒ 不要求驗收回合 ⇒ pass、沒警告" ($r.Code -eq 0 -and $r.Out -notmatch 'grill-gate 警告')
+    Set-Content $rl "$rlHead`n| R1（11/23） | 某電號抓不到 | 程式錯誤 | 樣本不足 | 只測一個電號 | abc123 |`n| R3（11/24） | 只按確定也算修改 | 新規則 | 規則定義晚 | 拿修改人代替值有沒有變 | — |" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $wc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 🔴 有「新規則」退回、grill 沒有「驗收回合」小節 ⇒ 派實作印警告、不擋（exit 0）並點名輪次" ((Warned $r '驗收回合') -and ($r.Out -replace '\s+', '') -match 'R3')
+    $r = Run @('-Role', 'sa', '-CasePath', $wc.Case)
+    Check "$tag 派 SA 不檢查驗收回合（只看實作／QA）、沒警告" ($r.Code -eq 0 -and $r.Out -notmatch 'grill-gate 警告')
+    Set-Content (Join-Path $wc.Case 'pm\grill-x.md') "質詢輪結束：已拍板`n`n## 驗收回合 R2（11-23）`nQ-20 期間推定：已拍板（PM 11-23）" -Encoding UTF8
+    $r = Run @('-Role', 'qa', '-CasePath', $wc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 只有別輪（R2）的驗收回合 ⇒ R3 仍印警告、不擋（exit 0）" ((Warned $r '驗收回合'))
+    Set-Content (Join-Path $wc.Case 'pm\grill-x.md') "質詢輪結束：已拍板`n`n## 驗收回合 R3（11-24）`nQ-21 只按確定算不算修改？建議不算 [待確認]" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $wc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 驗收回合小節還有 [待確認] ⇒ 擋（待拍板閘 exit 12 先擋）" ($r.Code -eq 12)
+    Set-Content (Join-Path $wc.Case 'pm\grill-x.md') "質詢輪結束：已拍板`n`n## 驗收回合 R3（11-24）`n" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $wc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 驗收回合小節是空的（沒有已拍板／已查證／已轉單）⇒ 警告（exit 0）" ((Warned $r '驗收回合'))
+    Set-Content (Join-Path $wc.Case 'pm\grill-x.md') "質詢輪結束：已拍板`n`n### 驗收回合 R3（11-24）`nQ-21 只按確定算不算修改＝不算（PM 11-24 已拍板）`nQ-22 只暫存＝不算（已拍板）" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $wc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag sa/ 或 pm/ 的 grill 有「驗收回合 R3」且已拍板 ⇒ pass（rework-rules=R3）" ($r.Code -eq 0 -and $r.Out -match 'rework-rules=R3' -and $r.Out -notmatch 'grill-gate 警告')
+    Set-Content (Join-Path $wc.Case 'pm\grill-x.md') '質詢輪結束：已拍板' -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $wc.Case, '-SkipRoute', '舊案', '-Skip', '-VerifyRoot', $realVerify)
+    Check "$tag 舊案 -SkipRoute＋-Skip ⇒ 驗收回合閘一起跳過（同 exit 12）" ($r.Code -eq 0)
+
     $r = Run @('-Role', 'backend', '-CasePath', $c.Case)
     Check "$tag 不帶 -VerifyRoot：預設找 CasePath 往上兩層的 verify/（暫存 case 沒有 ⇒ exit 6）" ($r.Code -eq 6)
 }
 foreach ($x in $cases) { Remove-Item -LiteralPath $x.Root -Recurse -Force -ErrorAction SilentlyContinue }
 Remove-Item -LiteralPath $fixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
+if ($Inner) { if ($script:fail) { exit 1 } else { exit 0 } }
+# 再用 Windows PowerShell 5.1 整支跑一輪（-Inner：只回 exit 碼，結果行照印）
+if ($env:SystemRoot -and (Test-Path $ps5) -and $PSVersionTable.PSEdition -ne 'Desktop') {
+    & $ps5 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $PSCommandPath -Inner
+    if ($LASTEXITCODE -ne 0) { $script:fail++ }
+}
 Write-Host ''
-if ($script:fail) { Write-Host "FAILED: $($script:fail)" -ForegroundColor Red; exit 1 } else { Write-Host 'ALL PASSED' -ForegroundColor Green }
+if ($script:fail) { Write-Host "FAILED: $($script:fail)" -ForegroundColor Red; exit 1 } else { Write-Host 'ALL PASSED' -ForegroundColor Green; exit 0 }

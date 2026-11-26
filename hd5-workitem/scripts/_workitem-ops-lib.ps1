@@ -201,6 +201,13 @@ function Test-DevOpsStateNeedsAcceptanceGate {
     return (Test-HD5StateNeedsAcceptanceGate -State $State -AcceptanceStates $AcceptanceStates)
 }
 
+# 工單歷程（updates API，分頁讀完）：退回紀錄閘用它數 State 變成「驗收未過」幾次
+function Get-DevOpsWorkItemUpdates {
+    param([hashtable]$Auth, [pscustomobject]$Target, [switch]$SkipCertificateCheck)
+    $api = if ($Target.ProjectApi) { $Target.ProjectApi } else { $Target.CollectionApi }
+    return @(Get-HD5AllUpdates -Fetcher { param($top, $skip) Invoke-DevOpsApi -Auth $Auth -Uri "$api/wit/workItems/$($Target.Id)/updates?`$top=$top&`$skip=$skip&api-version=6.0" -SkipCertificateCheck:$SkipCertificateCheck })
+}
+
 function Get-DevOpsComments {
     param([hashtable]$Auth, [pscustomobject]$Target, [switch]$SkipCertificateCheck)
     if (-not $Target.ProjectApi) { throw '留言 API 一定要帶 project' }

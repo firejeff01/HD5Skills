@@ -102,6 +102,8 @@ function Test-DevOpsAcceptanceGate {
         if ($ev.Legacy) { $details += "站上關卡證據：$($onsiteLatest.File.Name) 日期早於新格式生效日，未檢查功能編號與證據檔" }
         elseif (-not $ev.Passed) { $reasons += @($ev.Reasons | ForEach-Object { "站上關卡證據：$_" }) }
         else { $details += '站上關卡證據：每條都對到功能地圖、Pass 都有證據' }
+        # 只提醒、不影響通過（與 verify-map-check -Onsite 同一份判定）
+        foreach ($w in @($ev.Warnings | Where-Object { $_ })) { $details += "⚠ 站上關卡警告（不擋）：$w" }
     }
     return [pscustomobject]@{ Passed = ($reasons.Count -eq 0); Reasons = $reasons; Details = $details }
 }
@@ -143,3 +145,125 @@ function Assert-HD5AcceptanceGate {
     Write-Host '  工單閘｜通過（另請人工核對：站上關卡報告的部署 commit 跟現在站上一致、留言稿列出全部「未驗證」項目）' -ForegroundColor Green
     return $true
 }
+
+# ── 退回紀錄閘（2026-11-25）：驗收退回檢討做成會擋人的檢查 ─────────────────────
+# 判定本體在 check-rework-ledger.mjs（只有一份；守衛欄判定與 check-guard-refs 同一套），這裡只負責：
+#   數工單歷程的退回次數、找到工具、呼叫它、翻成閘的結果。
+#   accept（改待驗收）：歷程退回 k 次 ⇒ qa/rework-log.md 至少記 k 輪；有總帳就一起對帳格式（--gate：不查升級）
+#   done（改驗收完成、需求方已驗收完成後上傳結案報告）：rework-log m 列 ⇒ 報告 5.1 有 m 列（0 要寫「退回 0 次」）、總帳本案 m 列
+
+# 工單歷程（updates API 的 value[]）裡 System.State 變成退回狀態的次數。純函式，離線測試用假資料。
+function Get-HD5RejectionCount {
+    param([object[]]$Updates, [string[]]$RejectedStates)
+    $names = @($RejectedStates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() })
+    $n = 0
+    foreach ($u in @($Updates)) {
+        if ($null -eq $u -or $null -eq $u.fields) { continue }
+        $st = $u.fields.'System.State'
+        if ($null -eq $st) { continue }
+        $nv = ([string]$st.newValue).Trim()
+        if ($nv -and ($names -contains $nv)) { $n++ }
+    }
+    return $n
+}
+
+# 歷程裡有沒有進過「驗收完成」（目前狀態可能已被改成結案等其他狀態）
+function Test-HD5HistoryReachedDone {
+    param([object[]]$Updates, [string[]]$DoneStates)
+    foreach ($u in @($Updates)) {
+        if ($null -eq $u -or $null -eq $u.fields -or $null -eq $u.fields.'System.State') { continue }
+        if (Test-HD5StateIsDone -State ([string]$u.fields.'System.State'.newValue) -DoneStates $DoneStates) { return $true }
+    }
+    return $false
+}
+
+# 分頁讀完整歷程。Fetcher＝{ param($top, $skip) 回傳 updates API 的回應 }（兩支 lib 各自組 URL 與認證）。
+function Get-HD5AllUpdates {
+    param([Parameter(Mandatory = $true)][scriptblock]$Fetcher, [int]$PageSize = 200, [int]$MaxPages = 50)
+    $all = @()
+    for ($i = 0; $i -lt $MaxPages; $i++) {
+        $r = & $Fetcher $PageSize ($i * $PageSize)
+        $page = @($r.value | Where-Object { $null -ne $_ })
+        $all += $page
+        if ($page.Count -lt $PageSize) { break }
+    }
+    return $all
+}
+
+function Test-HD5ReworkGate {
+    param(
+        [string]$CasePath,
+        [ValidateSet('accept', 'done')][string]$Stage,
+        [int]$Rejections,
+        [string]$WorkItemId,
+        [string]$LedgerTool,
+        [string[]]$LedgerToolSearched
+    )
+    $fail = { param($r) [pscustomobject]@{ Passed = $false; Reasons = @($r); Details = @() } }
+    if ([string]::IsNullOrWhiteSpace($CasePath) -or -not (Test-Path -LiteralPath $CasePath -PathType Container)) {
+        return (& $fail "找不到案子資料夾 $CasePath（-CasePath 要指到 <AI_Service>/spec/<案名>）")
+    }
+    $case = [IO.Path]::GetFullPath($CasePath).TrimEnd('\', '/')
+    $ledger = Join-Path (Split-Path -Parent $case) 'rework-ledger.md'
+    if ($Stage -eq 'accept' -and $Rejections -le 0 -and -not (Test-Path -LiteralPath $ledger)) {
+        return [pscustomobject]@{ Passed = $true; Reasons = @(); Details = @('退回紀錄：工單歷程沒有退回、專案還沒有退回總帳') }
+    }
+    if ([string]::IsNullOrWhiteSpace($LedgerTool) -or -not (Test-Path -LiteralPath $LedgerTool -PathType Leaf)) {
+        $where = if (@($LedgerToolSearched).Count) { "（找過：$(@($LedgerToolSearched) -join '、')）" } else { '' }
+        return (& $fail "退回紀錄：找不到 check-rework-ledger.mjs$where，不放行（fail closed）。用 -ToolsDir 指到 HD5 工具資料夾，或確認 .claude/workflow.json 的 paths.tools")
+    }
+    $node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $node) { return (& $fail '退回紀錄：找不到 node（check-rework-ledger.mjs 要用），不放行（fail closed）') }
+    # --gate：工單閘只查格式與 rework-log／5.1／總帳對帳；「程式寫法類要有程式守衛、待辦拖著又再犯」只讓開發端 verify（不帶 --gate）變紅，不在這裡擋人
+    $argv = @($LedgerTool, '--check', '--gate', '--case', $case, '--stage', $Stage, '--rejections', [string]$Rejections)
+    if (-not [string]::IsNullOrWhiteSpace($WorkItemId)) { $argv += @('--id', [string]$WorkItemId) }
+    # PowerShell 原生呼叫（& node）。輸出用 [Console]::OutputEncoding 解碼，暫時切成 UTF-8（node 一律輸出 UTF-8）。
+    # 注意：入口腳本被 `pwsh -File` 另開程序執行時，端點防護（例 COMODO）會把該程序寫的檔關進隔離區，node 看不到——用 & 或 -Command 執行（README 第 18 行）。
+    $origEnc = [Console]::OutputEncoding; $origEap = $ErrorActionPreference
+    try {
+        try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+        $ErrorActionPreference = 'Continue'   # node 寫 stderr 不要被當成例外
+        $raw = @(& $node.Source @argv 2>&1)
+        $code = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $origEap; try { [Console]::OutputEncoding = $origEnc } catch { } }
+    $out = (@($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { [string]$_ }) -join "`n")
+    $err = (@($raw | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { $_.ToString() }) -join "`n")
+    $p = [pscustomobject]@{ ExitCode = $code }
+    $lines = @($out -split "`r?`n" | Where-Object { $_.Trim() -ne '' })
+    $reasons = @($lines | Where-Object { $_ -match '^❌' -and $_ -notmatch '對帳不合格：' } | ForEach-Object { "退回紀錄：$($_ -replace '^❌\s*', '')" })
+    $details = @("退回紀錄：工單歷程退回 $Rejections 次（$Stage）") + @($lines | Where-Object { $_ -match '^(⚠|✅)' } | ForEach-Object { "退回紀錄：$($_ -replace '^(⚠|✅)\s*', '')" })
+    if ($p.ExitCode -ne 0 -and $reasons.Count -eq 0) { $reasons = @("退回紀錄：check-rework-ledger.mjs 失敗（exit $($p.ExitCode)）：$((($out + ' ' + $err).Trim()))") }
+    return [pscustomobject]@{ Passed = ($p.ExitCode -eq 0 -and $reasons.Count -eq 0); Reasons = $reasons; Details = $details }
+}
+
+# 入口腳本共用：印結果、決定擋不擋（語意同 Assert-HD5AcceptanceGate）。回傳 $true＝通過或略過、$false＝預覽中未通過；正式執行未通過直接 throw。
+function Assert-HD5ReworkGate {
+    param(
+        [string]$CasePath,
+        [string]$SkipReason,
+        [ValidateSet('accept', 'done')][string]$Stage,
+        [int]$Rejections,
+        [string]$WorkItemId,
+        [string]$LedgerTool,
+        [string[]]$LedgerToolSearched,
+        [switch]$Preview,
+        [string]$ActionLabel = '改狀態'
+    )
+    if (-not [string]::IsNullOrWhiteSpace($SkipReason)) { return $true }   # 略過理由已由工單閘印出
+    if ([string]::IsNullOrWhiteSpace($CasePath)) {
+        $m = "$ActionLabel 前要對退回紀錄：請給 -CasePath <AI_Service/spec/<案名>>（檢查 qa/rework-log.md、結案報告 5.1、退回總帳）。沒有案子且使用者同意略過時用 -SkipAcceptanceGate '<理由>'。"
+        if ($Preview) { Write-Host "❌ 退回紀錄（正式執行會被擋）：$m" -ForegroundColor Red; return $false }
+        throw $m
+    }
+    $g = Test-HD5ReworkGate -CasePath $CasePath -Stage $Stage -Rejections $Rejections -WorkItemId $WorkItemId -LedgerTool $LedgerTool -LedgerToolSearched $LedgerToolSearched
+    foreach ($d in $g.Details) { Write-Host "  工單閘｜$d" }
+    if (-not $g.Passed) {
+        $why = $g.Reasons -join '；'
+        if ($Preview) { Write-Host "❌ 退回紀錄未通過（正式執行會被擋）：$why" -ForegroundColor Red; return $false }
+        throw "退回紀錄未通過，不$($ActionLabel)：$why"
+    }
+    Write-Host '  工單閘｜退回紀錄通過' -ForegroundColor Green
+    return $true
+}
+

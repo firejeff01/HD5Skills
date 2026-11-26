@@ -31,7 +31,9 @@ function Get-HD5GitPrefix([string]$Dir) {
     return ([string]$pre -replace '\\', '/')
 }
 
-function Get-HD5Project([string]$Start) {
+function Get-HD5Project([string]$Start, [switch]$NoGit) {
+    # -NoGit（2026-11-25）：不叫 git（Prefix 一律 $null；沒有設定檔時只用路徑規則猜專案）。
+    #   質詢閘只要 Workflow，每次呼叫兩次 git 約 0.3 秒，測試情境多了以後超過 install.ps1 的 180 秒上限。
     $cfg = Find-HD5Config $Start
     $wf = $null; $projDir = $null
     if ($cfg) {
@@ -42,9 +44,9 @@ function Get-HD5Project([string]$Start) {
         $full = [IO.Path]::GetFullPath($Start)
         $m = [regex]::Match($full, '^(.*?)[\\/](\.claude|AI_Service)([\\/]|$)')
         if ($m.Success) { $projDir = $m.Groups[1].Value }
-        else { $top = (& git -C $Start rev-parse --show-toplevel 2>$null); if ($top) { $projDir = $top -replace '/', '\' } }
+        elseif (-not $NoGit) { $top = (& git -C $Start rev-parse --show-toplevel 2>$null); if ($top) { $projDir = $top -replace '/', '\' } }
     }
-    $prefix = if ($projDir) { Get-HD5GitPrefix $projDir } else { $null }
+    $prefix = if ($projDir -and -not $NoGit) { Get-HD5GitPrefix $projDir } else { $null }
     $ai = if ($wf -and $wf.paths -and $wf.paths.aiService) { [string]$wf.paths.aiService } else { 'AI_Service' }
     $tools = if ($wf -and $wf.paths -and $wf.paths.tools -and $projDir) { Join-Path $projDir ([string]$wf.paths.tools) } else { $PSScriptRoot }
     [pscustomobject]@{ ConfigPath = $cfg; ProjectDir = $projDir; Prefix = $prefix; AiService = $ai; ToolsDir = $tools; Workflow = $wf }

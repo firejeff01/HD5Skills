@@ -41,6 +41,8 @@ $iso = Join-Path ([IO.Path]::GetTempPath()) ("hd5wiiso_" + [guid]::NewGuid().ToS
 New-Item -ItemType Directory -Path (Join-Path $iso 'tools\workitem') -Force | Out-Null
 Get-ChildItem -LiteralPath $scripts -File -Force | Copy-Item -Destination (Join-Path $iso 'tools\workitem') -Force
 Copy-Item -LiteralPath $vmLib -Destination (Join-Path $iso 'tools') -Force
+# 退回紀錄閘要用的總帳檢查器（與功能地圖檢查器同一層；它 import check-guard-refs.mjs）
+foreach ($n in 'check-rework-ledger.mjs', 'check-guard-refs.mjs') { $src = Join-Path (Split-Path -Parent $vmLib) $n; if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $iso 'tools') -Force } }
 $scripts = Join-Path $iso 'tools\workitem'
 $vmLib = Join-Path $iso 'tools\_verify-map-lib.ps1'
 $vmDir = Split-Path -Parent $vmLib
@@ -386,7 +388,8 @@ Write-Host '--- workitem-ops.ps1 完整流程（假 API）---'
 $global:HD5NetHandler = {
     param($Uri, $Method, $BodyText)
     if ($Method -eq 'Get' -and $Uri -match '/wit/workitems/(\d+)\?') { return (New-FakeItem ([int]$Matches[1]) $null '進行中') }
-    if ($Uri -match '/workitemtypes/[^/]+/states') { return [pscustomobject]@{ value = @([pscustomobject]@{ name = '進行中'; category = 'InProgress' }, [pscustomobject]@{ name = '待驗收'; category = 'Resolved' }) } }
+    if ($Uri -match '/workitemtypes/[^/]+/states') { return [pscustomobject]@{ value = @([pscustomobject]@{ name = '進行中'; category = 'InProgress' }, [pscustomobject]@{ name = '待驗收'; category = 'Resolved' }, [pscustomobject]@{ name = '驗收完成'; category = 'Completed' }) } }
+    if ($Method -eq 'Get' -and $Uri -match '/workItems/\d+/updates\?') { return [pscustomobject]@{ count = @($global:HD5Updates).Count; value = @($global:HD5Updates) } }
     if ($Method -eq 'Post' -and $Uri -match '/comments\?') { return [pscustomobject]@{ id = 777 } }
     if ($Method -eq 'Get' -and $Uri -match '/comments\?') { return [pscustomobject]@{ comments = @() } }
     if ($Method -eq 'Patch') { return [pscustomobject]@{ id = 42; fields = [pscustomobject]@{ 'System.State' = '待驗收'; 'System.AssignedTo' = [pscustomobject]@{ displayName = 'Someone' } } } }
@@ -418,6 +421,104 @@ Check '狀態不在型別狀態集：拋錯列出允許值、不寫入' ($r.Thre
 $global:HD5Net = @()
 $r = Run-Ops @('42', '-ConfigStart', $projA, '-Pat', 'SECRETPAT123')
 Check 'show：讀工單、附件、留言數' (-not $r.Threw -and $r.Out -match '#42' -and $r.Out -match 'a\.md' -and $r.Out -match '留言（0）')
+Write-Host '--- 退回紀錄閘：工單歷程退回次數、rework-log、5.1、總帳（2026-11-25）---'
+function New-Updates([string[]]$states) {
+    $i = 0
+    $list = @($states | ForEach-Object { $i++; [pscustomobject]@{ id = $i; fields = [pscustomobject]@{ 'System.State' = [pscustomobject]@{ oldValue = 'x'; newValue = $_ } } } })
+    return @($list + @([pscustomobject]@{ id = 90; fields = [pscustomobject]@{ 'System.Title' = [pscustomobject]@{ newValue = 't' } } }, [pscustomobject]@{ id = 91 }))
+}
+Check '歷程數退回：State 變成「驗收未過」2 次（沒有 State 欄的異動略過）' ((Get-HD5RejectionCount -Updates (New-Updates @('進行中', '待驗收', '驗收未過', '待驗收', '驗收未過', '待驗收')) -RejectedStates @('驗收未過')) -eq 2)
+Check '退回狀態名可設定（Rejected）' ((Get-HD5RejectionCount -Updates (New-Updates @('Rejected', 'Active', 'Rejected', 'Rejected')) -RejectedStates @('Rejected')) -eq 3)
+Check 'tracker 預設退回／完成狀態＝驗收未過／驗收完成' ((@($ctxA.RejectedStates) -contains '驗收未過') -and (@($ctxA.DoneStates) -contains '驗收完成'))
+$projRS = New-Proj 'projRS' ('{ "tracker": { "type": "azure-devops", "url": "' + $ProjUrl + '", "rejectedStates": ["Rejected"], "doneStates": ["Accepted"] } }')
+$ctxRS = Get-HD5TrackerContext -ConfigStart $projRS
+Check 'workflow.json 的 tracker.rejectedStates／doneStates 覆寫預設' ((@($ctxRS.RejectedStates) -join ',') -eq 'Rejected' -and (@($ctxRS.DoneStates) -join ',') -eq 'Accepted')
+Check '驗收完成狀態判定' ((Test-HD5StateIsDone -State '驗收完成' -DoneStates $ctxA.DoneStates) -and -not (Test-HD5StateIsDone -State '待驗收' -DoneStates $ctxA.DoneStates))
+$ledgerTool = Join-Path $vmDir 'check-rework-ledger.mjs'
+function RG([string]$c, [string]$stage, [int]$k, [string]$tool = $ledgerTool) { Test-HD5ReworkGate -CasePath $c -Stage $stage -Rejections $k -WorkItemId '42' -LedgerTool $tool }
+function New-ReworkLog([string[]]$rounds) { "# 退回紀錄`n`n| 輪次 | 退回原因 | 處理類別 | 根因類別 | 錯誤寫法 | 為什麼 | 修正 |`n|---|---|---|---|---|---|---|`n" + (($rounds | ForEach-Object { "| $_ | a | 程式錯誤 | 樣本不足 | 名稱只讀 Name 欄 | b | c |" }) -join "`n") + "`n" }
+function New-Report51([int]$n) {
+    $rows = (1..$n | ForEach-Object { "| R$_ | a | 樣本不足 | 名稱只讀 Name 欄 | b | c |" }) -join "`n"
+    return "# ai-case-report｜#42 x`n`n## 5. 測試與驗收結果`n`n### 5.1 退回檢討`n`n- 送驗 $($n + 1) 次、退回 $n 次`n`n| 輪次 | 退回原因 | 根因類別 | 錯誤寫法 | 為什麼 | 規則 |`n|---|---|---|---|---|---|`n$rows`n`n## 6. 未盡事項`n- 無`n"
+}
+$ledHead = "| 結案日 | 案號 | 輪次 | 根因類別 | 錯誤寫法 | 原因一句 | 為什麼沒先抓到 | 對應規則 |`n|---|---|---|---|---|---|---|---|`n"
+# 每列不同根因類別（同類別兩列會觸發「第 2 次要升級守衛」）
+$cats = @('樣本不足', '動作順序', '修後沒重跑', '測試資料形狀')
+function New-Ledger([string]$case, [int]$n, [string]$rule = '無（x）') { Write-Fixture (Join-Path (Split-Path -Parent $case) 'rework-ledger.md') ($ledHead + ((1..$n | ForEach-Object { "| 2026-11-25 | #42 | R$_ | $($cats[$_ - 1]) | 名稱只讀 Name 欄 | a | b | $rule |" }) -join "`n") + "`n") }
+$cR = New-GateCase @{ 'Codex驗收結果_R1.md' = '總結：通過'; 'onsite-gate_R1.md' = '總結：通過' }
+Check '待驗收：歷程沒有退回、沒有總帳 ⇒ 過' ((RG $cR 'accept' 0).Passed)
+$g = RG $cR 'accept' 2
+Check '🔴 待驗收：歷程退回 2 次、沒有 rework-log ⇒ 擋，說要先記第 1～2 輪' (-not $g.Passed -and ($g.Reasons -join ' ') -match '第 1～2 輪')
+Write-Fixture (Join-Path $cR 'qa\rework-log.md') (New-ReworkLog @('R1', 'R1'))
+$g = RG $cR 'accept' 2
+Check '🔴 待驗收：退回 2 次、rework-log 只有 R1（兩列）⇒ 擋，說要先記第 2 輪' (-not $g.Passed -and ($g.Reasons -join ' ') -match '第 2 輪退回')
+Write-Fixture (Join-Path $cR 'qa\rework-log.md') (New-ReworkLog @('R1', 'R2'))
+Check '待驗收：退回 2 次、rework-log 記了 R1、R2 ⇒ 過' ((RG $cR 'accept' 2).Passed)
+$g = RG $cR 'accept' 2 (Join-Path $tmpRoot 'missing\check-rework-ledger.mjs')
+Check '退回 >0 但找不到 check-rework-ledger.mjs ⇒ fail closed' (-not $g.Passed -and ($g.Reasons -join ' ') -match 'fail closed')
+Write-Fixture (Join-Path $cR 'ai-case-report.md') "# ai-case-report｜#42 x`n`n## 5. 測試與驗收結果`n- x`n"
+$g = RG $cR 'done' 2
+Check '🔴 驗收完成：rework-log 2 列、報告沒有 5.1 ⇒ 擋' (-not $g.Passed -and ($g.Reasons -join ' ') -match '5\.1')
+Write-Fixture (Join-Path $cR 'ai-case-report.md') (New-Report51 2)
+$g = RG $cR 'done' 2
+Check '🔴 驗收完成：5.1 有 2 列但總帳沒有本案 ⇒ 擋' (-not $g.Passed -and ($g.Reasons -join ' ') -match '總帳')
+New-Ledger $cR 2
+Check '驗收完成：rework-log、5.1、總帳都 2 列 ⇒ 過' ((RG $cR 'done' 2).Passed)
+# 同一根因類別第 2 次、只有 無（沒有程式守衛）：升級只讓開發端 verify 變紅，工單閘不擋（2026-11-25 使用者拍板）
+Write-Fixture (Join-Path (Split-Path -Parent $cR) 'rework-ledger.md') ($ledHead + "| 2026-11-25 | #42 | R1 | 動作順序 | 先新增再抓取沒測 | a | b | 無（x） |`n| 2026-11-25 | #42 | R2 | 動作順序 | 先新增再抓取沒測 | a | b | 無（y） |`n")
+Check '🔴 工單閘用 --gate：同類第 2 次沒有程式守衛 ⇒ 改待驗收不擋' ((RG $cR 'accept' 2).Passed)
+Check '🔴 工單閘用 --gate：同類第 2 次沒有程式守衛 ⇒ 驗收完成不擋' ((RG $cR 'done' 2).Passed)
+Write-Fixture (Join-Path (Split-Path -Parent $cR) 'rework-ledger.md') ($ledHead + "| 2026-11-25 | #42 | R1 | 動作順序 |  | a | b | 無（x） |`n| 2026-11-25 | #42 | R2 | 樣本不足 | 名稱只讀 Name 欄 | a | b | 無（y） |`n")
+$g = RG $cR 'done' 2
+Check '工單閘照樣查格式：總帳錯誤寫法空白 ⇒ 擋' (-not $g.Passed -and ($g.Reasons -join ' ') -match '錯誤寫法是空的')
+Write-Fixture (Join-Path $cR 'qa\rework-log.md') "| 輪次 | 退回原因 | 處理類別 | 根因類別 | 為什麼 | 修正 |`n|---|---|---|---|---|---|`n| R1 | a | 程式錯誤 | 樣本不足 | b | c |`n| R2 | a | 程式錯誤 | 樣本不足 | b | c |`n"
+New-Ledger $cR 2
+$g = RG $cR 'accept' 2
+Check '工單閘：rework-log 缺「錯誤寫法」欄 ⇒ 擋' (-not $g.Passed -and ($g.Reasons -join ' ') -match '錯誤寫法')
+Write-Fixture (Join-Path $cR 'qa\rework-log.md') (New-ReworkLog @('R1', 'R2'))
+New-Ledger $cR 2 '缺（先記帳）'
+$g = RG $cR 'accept' 2
+Check '改待驗收時一起跑總帳檢查：對應規則寫自由文字 ⇒ 擋' (-not $g.Passed -and ($g.Reasons -join ' ') -match '看不懂')
+Remove-Item -LiteralPath (Join-Path (Split-Path -Parent $cR) 'rework-ledger.md') -Force
+
+Write-Host '--- workitem-ops：退回紀錄閘（假 API）---'
+$cF = New-EvCase $okOnsite
+$baseF = @('42', '-Action', 'update', '-State', '待驗收', '-CasePath', $cF, '-ToolsDir', $vmDir, '-VerifyRoot', ([IO.Path]::GetFullPath((Join-Path $cF '..\..\verify'))), '-Pat', 'SECRETPAT123')
+$global:HD5Updates = New-Updates @('待驗收', '驗收未過', '待驗收', '驗收未過')
+$global:HD5Net = @()
+$r = Run-Ops ($baseF + @('-ConfigStart', $projA))
+Check '🔴 改待驗收：歷程退回 2 次、沒記 rework-log ⇒ 擋、不寫入（有讀歷程）' ($r.Threw -and $r.Msg -match '第 1～2 輪' -and @($global:HD5Net | Where-Object { $_.Method -ne 'Get' }).Count -eq 0 -and @($global:HD5Net | Where-Object { $_.Uri -match '/updates\?' }).Count -ge 1)
+$global:HD5Net = @()
+$r = Run-Ops ($baseF + @('-ConfigStart', $projA, '-WhatIfOnly'))
+Check '改待驗收預覽：退回紀錄不足只印「正式執行會被擋」' (-not $r.Threw -and $r.Out -match '正式執行會被擋' -and $r.Out -match '第 1～2 輪' -and @($global:HD5Net | Where-Object { $_.Method -ne 'Get' }).Count -eq 0)
+Write-Fixture (Join-Path $cF 'qa\rework-log.md') (New-ReworkLog @('R1', 'R2'))
+$global:HD5Net = @()
+$r = Run-Ops ($baseF + @('-ConfigStart', $projA))
+Check '改待驗收：rework-log 記滿 2 輪 ⇒ 寫入' (-not $r.Threw -and @($global:HD5Net | Where-Object { $_.Method -eq 'Patch' }).Count -eq 1)
+$global:HD5Updates = New-Updates @('Rejected', 'Rejected', 'Rejected')
+$global:HD5Net = @()
+$r = Run-Ops ($baseF + @('-ConfigStart', $projRS))
+Check 'tracker.rejectedStates＝Rejected：歷程 3 次、只記 2 輪 ⇒ 擋第 3 輪' ($r.Threw -and $r.Msg -match '第 3 輪退回')
+$global:HD5Updates = @()
+$global:HD5Net = @()
+$r = Run-Ops @('42', '-Action', 'update', '-State', '驗收完成', '-ConfigStart', $projA, '-Pat', 'SECRETPAT123')
+Check '🔴 改驗收完成沒給 -CasePath：連網前就擋' ($r.Threw -and $r.Msg -match 'CasePath' -and $global:HD5Net.Count -eq 0)
+$global:HD5Net = @()
+$doneF = @('42', '-Action', 'update', '-State', '驗收完成', '-CasePath', $cF, '-ToolsDir', $vmDir, '-ConfigStart', $projA, '-Pat', 'SECRETPAT123')
+$r = Run-Ops $doneF
+Check '🔴 改驗收完成：rework-log 2 列、沒有結案報告 5.1 ⇒ 擋、不寫入' ($r.Threw -and $r.Msg -match '5\.1' -and @($global:HD5Net | Where-Object { $_.Method -ne 'Get' }).Count -eq 0)
+Write-Fixture (Join-Path $cF 'ai-case-report.md') (New-Report51 2)
+New-Ledger $cF 2
+$global:HD5Net = @()
+$r = Run-Ops $doneF
+Check '改驗收完成：5.1 與總帳都齊 ⇒ 寫入' (-not $r.Threw -and @($global:HD5Net | Where-Object { $_.Method -eq 'Patch' }).Count -eq 1)
+
+Write-Host '--- 留言不審文字（2026-11-25 使用者拍板：用正規表示式審文字易繞過又誤擋，不擋也不警告）---'
+$global:HD5Net = @()
+$r = Run-Ops @('42', '-Action', 'update', '-Comment', "第二輪修正完成。`n只按確定不算修改，維持就不用回。", '-ConfigStart', $projA, '-Pat', 'SECRETPAT123')
+Check '留言含「維持就不用回」⇒ 照常送出，不擋不警告' (-not $r.Threw -and @($global:HD5Net | Where-Object { $_.Method -eq 'Post' }).Count -eq 1 -and $r.Out -notmatch '句型')
+Check '句型清單與檢查函式已移除' (-not (Get-Command Find-HD5DeferToSilencePhrase -ErrorAction SilentlyContinue) -and -not (Get-Command Assert-HD5CommentPhrasing -ErrorAction SilentlyContinue))
+
 Write-Host '--- 認證／憑證（假 API）---'
 $projSelf = New-Proj 'projSelf' '{ "tracker": { "type": "azure-devops", "url": "https://devops.example.com/DefaultCollection/example-project" } }'
 $global:HD5Net = @()

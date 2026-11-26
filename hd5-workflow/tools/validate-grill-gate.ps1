@@ -24,6 +24,13 @@
   1b'. PM 問卷回收閘（2026-11-24，路線＝PM 端已完成，-Role sa 與下游）：
      pm/ 或 case_spec_content/attachments/ 有 spec_*_r*.html（需求問卷）⇒ pm/ 或 case_spec_content/（含子資料夾）要有對應的
      <同名>_answer*.html，缺 ⇒ exit 13。依據：試跑時 pm.zip 的 grill 檔一複製進來閘就過，問卷有沒有回收完全沒驗。
+  0'. 外部系統宣告（2026-11-25，-Role sa 與下游；-SkipRoute 時略過）：spec_*.md 該寫「外部系統：有｜無」，
+     路線那一行（建議：路線：…，高風險：…，外部系統：無，理由：…）或另起一行都可以；沒寫 ⇒ 警告（不擋）。
+  1c. 外部系統樣本（外部系統：有，-Role 實作角色|qa）：sa/external-samples.md 要有樣本表（表頭含「變化」「真實樣本」）、
+     至少一列、每列「真實樣本」有值或寫「待提供（誰）」⇒ 否則警告（不擋）。依據：#2164 R1 只用一個真實電號測。
+  1d. 驗收回合（-Role 實作角色|qa；-Skip 時一起跳過）：qa/rework-log.md 有處理類別＝新規則的輪次 R{k} ⇒
+     pm/ 或 sa/ 的 grill-*.md 要有標題含「驗收回合」與 R{k} 的小節，內有已拍板／已查證／已轉單且沒有待拍板行（同 exit 12 判定）
+     ⇒ 否則警告（不擋）。依據：#2164 R3／R4 新規則照自己理解做，又退一輪。
   2. 功能地圖閘（2026-11-22，僅 -Role 實作角色|qa）：
      - 本案動到的功能要標成 `@功能:<編號>`，可寫在：sa/*.feature、sa/*.md（小問題路線的 bug-analysis）、
        case_spec_content/spec_*.md、pg/*.md。
@@ -38,6 +45,7 @@
   & ./validate-grill-gate.ps1 -Role backend -CasePath AI_Service/spec/<舊案> -SkipRoute "11-23 前已進 PG" -Skip
   exit 碼：0 通過｜1 角色不認得｜2～4 質詢紀錄｜5～7 功能地圖｜8 沒寫路線｜9 有路線又 -Skip｜10 小問題缺 SA 分析｜
            11 沒標高風險或高風險缺對抗輪｜12 grill 紀錄還有待拍板題｜13 PM 問卷沒有回收答覆
+           警告（不改 exit 碼，stdout 印「grill-gate 警告：…」）：沒寫外部系統｜外部系統＝有但樣本表缺或不齊｜新規則退回缺驗收回合質詢
 #>
 [CmdletBinding()]
 param(
@@ -68,8 +76,10 @@ if (-not (Test-Path -LiteralPath $locate)) { $locate = Join-Path $PSScriptRoot '
 $wf = $null
 if (Test-Path -LiteralPath $locate) {
     . $locate
-    $proj = Get-HD5Project -Start $resolvedCase.Path
-    if (-not $proj.Workflow) { $proj = Get-HD5Project -Start $PSScriptRoot }
+    # 只用 Workflow，不需要 git 前綴（-NoGit；舊版 _hd5-locate 沒有這個參數就照舊呼叫）
+    $noGit = @{}; if ((Get-Command Get-HD5Project).Parameters.ContainsKey('NoGit')) { $noGit['NoGit'] = $true }
+    $proj = Get-HD5Project -Start $resolvedCase.Path @noGit
+    if (-not $proj.Workflow) { $proj = Get-HD5Project -Start $PSScriptRoot @noGit }
     $wf = $proj.Workflow
 }
 $implRoles = @{}   # 名稱（含別名）→ 正式 gateRole
@@ -93,10 +103,37 @@ if ($Role -eq 'pm') {
     exit 0
 }
 
+# 共用解析（樣本對照表、退回紀錄、功能地圖）：_verify-map-lib.ps1
+$vlib = Join-Path $PSScriptRoot '_verify-map-lib.ps1'   # HD5Skills：同一個 tools 資料夾
+if (-not (Test-Path -LiteralPath $vlib)) { $vlib = Join-Path $PSScriptRoot '..\..\..\..\agent\scripts\_verify-map-lib.ps1' }   # IMOCore 舊位置
+if (Test-Path -LiteralPath $vlib) { . $vlib }
+function Assert-VerifyLib([string]$what) {
+    if (-not (Get-Command Get-ReworkLog -ErrorAction SilentlyContinue)) {
+        Write-Error "GRILL_GATE=fail role=$Role lib: $what 要用 _verify-map-lib.ps1，但找不到（$vlib）或版本太舊。請重新安裝 HD5 工具（不放行）"
+        exit 1
+    }
+}
+
+# 警告（2026-11-25 使用者拍板）：外部系統宣告、樣本表、驗收回合是需求溝通與人工步驟，程式碰不到，擋了容易被敷衍或繞過；
+# 照樣判斷，但只印「grill-gate 警告：…」（hook 放行訊息會帶出），exit 碼照舊。真正的防線在產品程式層的測試。
+$gateWarnings = @()
+
+# 待拍板行（exit 12 與驗收回合警告共用）：有「待拍板」或「[待確認]」，沒標已轉單、不是總結行、同一行後面也沒接已拍板／已查證
+function Test-PendingLine([string]$line) {
+    $pm = [regex]::Matches($line, '待拍板|[\[［]\s*待確認\s*[\]］]')
+    if ($pm.Count -eq 0) { return $false }
+    if ($line -match '已轉單') { return $false }                                       # 轉給非工程角色＝合法終止狀態
+    if ($line -match '待拍板\S{0,2}\s*[:：]?\s*(無|0\s*題|0\s*$)') { return $false }      # 「待拍板：無」「待拍板題 0 題」之類的總結行
+    $last = $pm[$pm.Count - 1]
+    if ($line.Substring($last.Index + $last.Length) -match '已拍板|已查證') { return $false }   # 同一行後面已收斂（例：建議 A [待確認] → 已拍板 A）
+    return $true
+}
+
 # ── 0. 路線閘 ───────────────────────────────────────────────────────────
 $route = ''
 $routeLine = ''
 $risk = ''
+$external = ''
 $routeNote = ''
 if (-not [string]::IsNullOrWhiteSpace($SkipRoute)) {
     $routeNote = "route=skip reason=$SkipRoute"
@@ -123,6 +160,21 @@ if (-not [string]::IsNullOrWhiteSpace($SkipRoute)) {
     }
     $risk = $riskM.Groups[1].Value
     $routeNote = "route=$route risk=$(if ($risk -eq '是') { 'high' } else { 'low' })"
+    # 外部系統（2026-11-25，#2164 R1 樣本不足）：建案時就要判斷「有沒有串外部系統」，寫在路線那一行（建議）或另起一行「外部系統：有｜無」
+    $extM = [regex]::Match($routeLine, '外部系統\**\s*[:：]\s*\**\s*(有|無)')
+    if (-not $extM.Success) {
+        foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $resolvedCase 'case_spec_content') -Filter 'spec_*.md' -File -ErrorAction SilentlyContinue)) {
+            $extM = [regex]::Match((Get-Content -Raw -LiteralPath $f.FullName -Encoding UTF8), '(?m)^[\s>*-]*\**外部系統\**\s*[:：]\s*\**\s*(有|無)')
+            if ($extM.Success) { break }
+        }
+    }
+    if (-not $extM.Success) {
+        $gateWarnings += "外部系統：spec_001.md 沒寫「外部系統：有｜無」（抓網頁、呼叫對方 API、讀對方產的檔案＝有；有 ⇒ SA 列 sa/external-samples.md 樣本對照表，hd5-grill 第三節第九分支）。建議寫在路線那一行：路線：…，高風險：…，外部系統：無，理由：…"
+        $routeNote += ' external=unknown'
+    } else {
+        $external = $extM.Groups[1].Value
+        $routeNote += " external=$(if ($external -eq '有') { 'yes' } else { 'no' })"
+    }
 }
 
 # ── 1. 質詢閘 ───────────────────────────────────────────────────────────
@@ -182,12 +234,7 @@ if ($isDownstream -and -not $Skip) {
             $n = 0
             foreach ($line in @(Get-Content -LiteralPath $g.FullName -Encoding UTF8)) {
                 $n++
-                $pm = [regex]::Matches($line, '待拍板|[\[［]\s*待確認\s*[\]］]')
-                if ($pm.Count -eq 0) { continue }
-                if ($line -match '已轉單') { continue }                                       # 轉給非工程角色＝合法終止狀態
-                if ($line -match '待拍板\S{0,2}\s*[:：]?\s*(無|0\s*題|0\s*$)') { continue }      # 「待拍板：無」「待拍板題 0 題」之類的總結行
-                $last = $pm[$pm.Count - 1]
-                if ($line.Substring($last.Index + $last.Length) -match '已拍板|已查證') { continue }   # 同一行後面已收斂（例：建議 A [待確認] → 已拍板 A）
+                if (-not (Test-PendingLine $line)) { continue }
                 $snip = $line.Trim(); if ($snip.Length -gt 60) { $snip = $snip.Substring(0, 60) + '…' }
                 $pendingHits += "$dir/$($g.Name):$n「$snip」"
             }
@@ -217,6 +264,73 @@ if ($route -eq 'PM端已完成') {
         exit 13
     }
     if ($questionnaires.Count) { $grillNote += " answers=$($questionnaires.Count)" }
+}
+
+# ── 1c. 外部系統樣本閘（外部系統：有，派實作／QA 前；2026-11-25）────────────────────
+# #2164 R1：開發只用一個真實電號測，另外兩種電號型態到驗收才炸。sa/external-samples.md 的樣本對照表至少一列，
+# 每列「真實樣本」要有值，或寫「待提供（誰）」（測試資料由需求方準備，開發不造）。
+if ($external -eq '有' -and $isDownstream) {
+    Assert-VerifyLib '外部系統樣本閘'
+    $smpPath = Join-Path $resolvedCase 'sa\external-samples.md'
+    $why = ''
+    if (-not (Test-Path -LiteralPath $smpPath)) { $why = '缺 sa/external-samples.md' }
+    else {
+        $smp = Get-ExternalSamples -Path $smpPath
+        if (-not $smp.Found) { $why = 'sa/external-samples.md 沒有樣本對照表（表頭要有「變化」與「真實樣本」欄）' }
+        elseif (@($smp.Rows).Count -eq 0) { $why = 'sa/external-samples.md 的樣本對照表一列都沒有' }
+        else {
+            $bad = @($smp.Rows | Where-Object { $_.Problem } | ForEach-Object { "「$($_.Name)」$($_.Problem)" })
+            if ($bad.Count) { $why = 'sa/external-samples.md 樣本不齊：' + ($bad -join '；') }
+        }
+    }
+    if ($why) {
+        $gateWarnings += "外部系統樣本：$why。SA 要列出對方會有幾種變化（類型、版型、期間、欄位有無、錯誤頁），每種寫真實樣本，沒有的寫「待提供（誰）」並轉題給需求方（hd5-grill 第三節第九分支）"
+    } else {
+        $grillNote += " samples=$(@($smp.Rows).Count)"
+    }
+}
+
+# ── 1d. 驗收回合閘（qa/rework-log.md 有「新規則」退回，派實作／QA 前；-Skip 時一起跳過；2026-11-25）───────
+# #2164 R3、R4：需求方在退回裡給了新規則，開發照自己的理解做、邊界寫在送驗留言 ⇒ 又退一輪。
+# 每個處理類別＝新規則的輪次 R{k}，pm/ 或 sa/ 的 grill-*.md 要有標題含「驗收回合」與 R{k} 的小節，
+# 小節內至少一個已拍板／已查證／已轉單，而且沒有待拍板行（判定同 exit 12）。
+if ($isDownstream -and -not $Skip) {
+    $rwPath = Join-Path $resolvedCase 'qa\rework-log.md'
+    if (Test-Path -LiteralPath $rwPath) {
+        Assert-VerifyLib '驗收回合閘'
+        $rw = Get-ReworkLog -Path $rwPath
+        $ruleRounds = @($rw.Rows | Where-Object { $_.Category -match '新規則' } | ForEach-Object { $_.Round } | Sort-Object -Unique)
+        if ($ruleRounds.Count) {
+            $okRounds = @{}; $badSec = @()
+            foreach ($dir in 'pm', 'sa') {
+                foreach ($g in @(Get-ChildItem -LiteralPath (Join-Path $resolvedCase $dir) -Filter 'grill-*.md' -File -ErrorAction SilentlyContinue)) {
+                    $gl = @(Get-Content -LiteralPath $g.FullName -Encoding UTF8)
+                    for ($i = 0; $i -lt $gl.Count; $i++) {
+                        $hm = [regex]::Match($gl[$i], '^(#{1,6})\s+.*驗收回合')
+                        if (-not $hm.Success) { continue }
+                        $lvl = $hm.Groups[1].Value.Length
+                        $rounds = @([regex]::Matches($gl[$i], 'R\s*(\d+)') | ForEach-Object { [int]$_.Groups[1].Value })
+                        $body = @()
+                        for ($j = $i + 1; $j -lt $gl.Count; $j++) {
+                            $h2 = [regex]::Match($gl[$j], '^(#{1,6})\s'); if ($h2.Success -and $h2.Groups[1].Value.Length -le $lvl) { break }
+                            $body += $gl[$j]
+                        }
+                        $hasMarker = (($body -join "`n") -match $markerPattern)
+                        $pend = @($body | Where-Object { Test-PendingLine $_ })
+                        if ($hasMarker -and $pend.Count -eq 0) { foreach ($k in $rounds) { $okRounds[$k] = "$dir/$($g.Name)" } }
+                        else { $badSec += "$dir/$($g.Name):$($i + 1)（$(if (-not $hasMarker) { '沒有已拍板／已查證／已轉單' } else { "還有 $($pend.Count) 題待拍板" })）" }
+                    }
+                }
+            }
+            $missRounds = @($ruleRounds | Where-Object { -not $okRounds.ContainsKey($_) })
+            if ($missRounds.Count) {
+                $gateWarnings += ("驗收回合：qa/rework-log.md 的 " + (($missRounds | ForEach-Object { "R$_" }) -join '、') + " 退回是「新規則」，" +
+                    "但 pm/ 或 sa/ 的 grill-*.md 沒有收斂完的「驗收回合 R{k}」小節" + $(if ($badSec.Count) { "（不合格的小節：$($badSec -join '；')）" } else { '' }) +
+                    "。先查判斷依據的欄位何時被寫入、用選擇題請需求方逐項勾，答案寫進「## 驗收回合 R{k}」小節再派實作（hd5-grill 第二節第 6 條）")
+            }
+            $grillNote += " rework-rules=$(($ruleRounds | ForEach-Object { "R$_" }) -join ',')"
+        }
+    }
 }
 
 # ── 1b. 對抗輪閘（高風險：是，派 PG／QA 前；2026-11-23）────────────────────────
@@ -262,9 +376,7 @@ if ($isDownstream) {
             exit 5
         }
         if ([string]::IsNullOrWhiteSpace($VerifyRoot)) { $VerifyRoot = Join-Path (Split-Path (Split-Path $resolvedCase -Parent) -Parent) 'verify' }
-        $vlib = Join-Path $PSScriptRoot '_verify-map-lib.ps1'   # HD5Skills：同一個 tools 資料夾
-        if (-not (Test-Path -LiteralPath $vlib)) { $vlib = Join-Path $PSScriptRoot '..\..\..\..\agent\scripts\_verify-map-lib.ps1' }   # IMOCore 舊位置
-        . $vlib
+        if (-not (Get-Command Test-VerifyMap -ErrorAction SilentlyContinue)) { . $vlib }
         $map = Test-VerifyMap -VerifyRoot $VerifyRoot
         if (-not $map.Passed) {
             Write-Error ("GRILL_GATE=fail role=$Role feature-map: 功能地圖不合格（$VerifyRoot）：" + ($map.Reasons -join '；'))
@@ -279,5 +391,6 @@ if ($isDownstream) {
     }
 }
 
+foreach ($w in $gateWarnings) { Write-Output "grill-gate 警告：$w" }
 Write-Output "GRILL_GATE=pass role=$Role $routeNote $grillNote$riskNote$featureNote"
 exit 0

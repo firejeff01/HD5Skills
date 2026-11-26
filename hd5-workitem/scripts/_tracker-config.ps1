@@ -13,6 +13,8 @@
     tracker.type               azure-devops｜none。找到設定檔但不是 azure-devops ⇒ 拒絕（本專案沒有設定 Azure DevOps）
     tracker.url                專案網址 https://host/{organization 或 collection}/{project}
     tracker.acceptanceStates   （選填）除了含「待驗收」的狀態以外，還有哪些狀態名要過工單閘，例 ["Ready for UAT"]
+    tracker.rejectedStates     （選填）需求方退回的狀態名（預設 ["驗收未過"]）：工單歷程數 State 變成它幾次＝退回幾次
+    tracker.doneStates         （選填）需求方最終驗收通過的狀態名（預設 ["驗收完成"]）：改成它、或已經是它時上傳結案報告，要過退回檢討檢查
     paths.aiService            案子與功能地圖所在資料夾（預設 AI_Service）
     paths.tools                HD5 工具資料夾（預設 AI_Service/hd5-tools；功能地圖檢查器 _verify-map-lib.ps1 在這裡）
 #>
@@ -50,6 +52,7 @@ function Get-HD5TrackerContext {
     }
     $cfg = Find-HD5WorkflowConfig -Starts $starts
     $wf = $null; $proj = $null; $type = $null; $url = $null; $acc = @()
+    $rej = @('驗收未過'); $done = @('驗收完成')
     $ai = 'AI_Service'; $tools = $null
     if ($cfg) {
         try { $wf = [IO.File]::ReadAllText($cfg, [Text.Encoding]::UTF8) | ConvertFrom-Json }
@@ -60,6 +63,8 @@ function Get-HD5TrackerContext {
             if (-not [string]::IsNullOrWhiteSpace([string]$wf.tracker.type)) { $type = ([string]$wf.tracker.type).Trim() }
             if (-not [string]::IsNullOrWhiteSpace([string]$wf.tracker.url)) { $url = ([string]$wf.tracker.url).Trim() }
             if ($wf.tracker.acceptanceStates) { $acc = @($wf.tracker.acceptanceStates | ForEach-Object { [string]$_ } | Where-Object { $_.Trim() -ne '' }) }
+            if ($wf.tracker.rejectedStates) { $rej = @($wf.tracker.rejectedStates | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ne '' }) }
+            if ($wf.tracker.doneStates) { $done = @($wf.tracker.doneStates | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ne '' }) }
         }
         if ($wf.paths -and -not [string]::IsNullOrWhiteSpace([string]$wf.paths.aiService)) { $ai = [string]$wf.paths.aiService }
         $t = 'AI_Service/hd5-tools'
@@ -69,6 +74,7 @@ function Get-HD5TrackerContext {
     return [pscustomobject]@{
         ConfigPath = $cfg; ProjectDir = $proj; Workflow = $wf
         TrackerType = $type; TrackerUrl = $url; AcceptanceStates = $acc
+        RejectedStates = $rej; DoneStates = $done
         AiService = $ai; ToolsDir = $tools
     }
 }
@@ -115,6 +121,31 @@ function Resolve-HD5VerifyMapLib {
         if (Test-Path -LiteralPath $p -PathType Leaf) { return [pscustomobject]@{ Path = $p; Searched = $searched } }
     }
     return [pscustomobject]@{ Path = $null; Searched = $searched }
+}
+
+# HD5 工具資料夾裡的其他工具（例 check-rework-ledger.mjs）：同上的順序，最後再找套件原始碼位置（<kit>/hd5-workflow/tools）。
+function Resolve-HD5ToolFile {
+    param([Parameter(Mandatory = $true)][string]$Name, [string]$ToolsDir, $Context, [string]$ScriptRoot)
+    $cands = @()
+    if (-not [string]::IsNullOrWhiteSpace($ToolsDir)) { $cands += $ToolsDir }
+    elseif ($Context -and $Context.ToolsDir) { $cands += $Context.ToolsDir }
+    else { if ($ScriptRoot) { $cands += (Join-Path $ScriptRoot '..'); $cands += (Join-Path $ScriptRoot '..\..\hd5-workflow\tools') } }
+    $searched = @()
+    foreach ($d in $cands) {
+        $p = $null
+        try { $p = [IO.Path]::GetFullPath((Join-Path $d $Name)) } catch { continue }
+        $searched += $p
+        if (Test-Path -LiteralPath $p -PathType Leaf) { return [pscustomobject]@{ Path = $p; Searched = $searched } }
+    }
+    return [pscustomobject]@{ Path = $null; Searched = $searched }
+}
+
+# 需求方最終驗收通過的狀態（tracker.doneStates，預設「驗收完成」）：名稱完全相同才算
+function Test-HD5StateIsDone {
+    param([string]$State, [string[]]$DoneStates)
+    if ([string]::IsNullOrWhiteSpace($State)) { return $false }
+    foreach ($s in @($DoneStates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) { if ($State.Trim() -eq $s.Trim()) { return $true } }
+    return $false
 }
 
 # 案子根目錄（spec）：workflow.json → <專案>/<aiService>/spec；沒有設定檔回 $null（呼叫端要求 -SpecRoot）。

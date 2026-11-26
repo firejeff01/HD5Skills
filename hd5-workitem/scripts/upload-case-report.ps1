@@ -137,6 +137,19 @@ Write-Host "目前狀態：$($wi.fields.'System.State')　專案：$($wi.fields.
 Write-Host "報告檔案：$ReportPath（$([Math]::Round((Get-Item -LiteralPath $ReportPath).Length / 1KB, 1)) KB）"
 Write-Host "既有同名報告：$($existing.Count) 份 → 本次上傳為第 $version 版（引用端取最新）"
 Write-Host "認證：$($auth.Source)"
+
+# 退回檢討（2026-11-25）：需求方已驗收完成（目前狀態，或歷程進過 tracker.doneStates）⇒ 報告 5.1、退回總帳要齊（check-rework-ledger.mjs）
+$updates = @(Get-DevOpsWorkItemUpdates -ApiRoot $ref.ProjectApi -Id $id -Headers $headers)
+$accepted = (Test-HD5StateIsDone -State ([string]$wi.fields.'System.State') -DoneStates $ctx.DoneStates) -or (Test-HD5HistoryReachedDone -Updates $updates -DoneStates $ctx.DoneStates)
+if ($accepted) {
+    Write-Host "  工單閘｜需求方已驗收完成：檢查結案報告 5.1 退回檢討與退回總帳"
+    $ledgerTool = Resolve-HD5ToolFile -Name 'check-rework-ledger.mjs' -ToolsDir $ToolsDir -Context $ctx -ScriptRoot $PSScriptRoot
+    $k = Get-HD5RejectionCount -Updates $updates -RejectedStates $ctx.RejectedStates
+    $reworkOk = Assert-HD5ReworkGate -CasePath $CasePath -SkipReason $SkipAcceptanceGate -Stage done -Rejections $k -WorkItemId ([string]$id) `
+        -LedgerTool $ledgerTool.Path -LedgerToolSearched $ledgerTool.Searched -Preview:$isPreview -ActionLabel '上傳結案報告'
+    if (-not $reworkOk) { $gateOk = $false }
+}
+
 if (-not $Upload -or $WhatIfOnly) {
     Write-Host ""
     if (-not $gateOk) { Write-Host "（工單閘目前未通過：照現況加 -Upload 會被擋）" -ForegroundColor Red }

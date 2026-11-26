@@ -58,11 +58,23 @@ spec／verify／onboard 與 PAT 檔；不刪檔，套件已不含的檔只列出
 | 位置 | 內容 |
 |---|---|
 | `.claude/skills/`、`.agents/skills/` | 技能（Claude 與 Codex 各一份） |
-| `AI_Service/hd5-tools/` | 關卡工具與 hook（只有一份）：`validate-grill-gate.ps1`、`verify-map-check.ps1`、`check-guard-refs.mjs`、`hooks/grill-gate.ps1`、`hooks/main-edit-guard.ps1` |
+| `AI_Service/hd5-tools/` | 關卡工具與 hook（只有一份）：`validate-grill-gate.ps1`、`verify-map-check.ps1`、`check-guard-refs.mjs`、`check-rework-ledger.mjs`（退回總帳對帳）、`hooks/grill-gate.ps1`、`hooks/main-edit-guard.ps1` |
 | `.claude/agents/` | pm／sa／qa-expert、實作代理 |
 | `.claude/workflow.json` | 實作代理與它們管哪些檔、產品程式範圍、工具位置、分支、工單系統 |
 | `.claude/settings.json` | 註冊兩支 hook（只合併，不動其他設定） |
 | `AI_Service/spec/`、`AI_Service/verify/` | 案子、功能地圖 |
+
+## 防線的優先序（2026-11-25）
+
+糾正一次就變成確定性檢查（Lauren Tan）：產品程式架構（型別／API／目錄邊界）→ 靜態檢查（棘輪、lint、架構測試）→ 自動化驗證 → 流程閘 → 文字。
+
+- **會擋人的流程閘**只有質詢閘 exit 2～13、功能地圖、工單閘（獨立驗收／站上關卡通過、退回紀錄 `check-rework-ledger.mjs --gate`）。
+- **退回檢討循環**：每次驗收退回記 `qa/rework-log.md`（含「錯誤寫法」欄）→ 驗收完成時結案報告 5.1＋專案總帳 `AI_Service/spec/rework-ledger.md`；
+  程式寫法類的根因第一次就要對應程式守衛（或 `待辦（G-NN）`），否則 `check-rework-ledger.mjs --check`（verify）紅，不擋工單結案。
+- **只警告、不擋**（需求溝通與人工步驟，擋了容易被敷衍或繞過；真正的防線在產品程式層）：
+  - 質詢閘印「grill-gate 警告：…」（派發 hook 帶進放行訊息）：`spec_*.md` 沒寫「外部系統：有｜無」（建議寫在路線那一行：`路線：…，高風險：…，外部系統：無，理由：…`）；外部系統＝有但 `sa/external-samples.md` 缺或樣本不齊；rework-log 有「新規則」退回但 grill 沒有收斂完的「驗收回合 R{k}」小節。
+  - 站上關卡（`verify-map-check.ps1 -Onsite` 與工單閘）印「⚠ 站上關卡警告（不擋）：…」：退回後沒有（新打通）列，寫 `新打通：無（理由）` 消除；同一項連兩輪「未驗證（待使用者動作）」，寫 `使用者放行：<項目>…（MM-DD）` 消除。
+  - 外部系統每種變化要有**產品程式層的樣本契約測試**，站上不再逐種列 A 項。
 
 ## 需求
 
@@ -79,6 +91,9 @@ node HD5Skills/hd5-onboard/scripts/check-onboard.mjs --selftest
 & ./HD5Skills/hd5-workflow/tools/tests/verify-map.tests.ps1         # 功能地圖檢查器（佔位符判定等）
 & ./HD5Skills/hd5-workflow/tools/hooks/tests/grill-gate.tests.ps1
 & ./HD5Skills/hd5-workflow/tools/hooks/tests/main-edit-guard.tests.ps1
+node HD5Skills/hd5-workflow/tools/check-guard-refs.mjs --selftest
+node HD5Skills/hd5-workflow/tools/check-rework-ledger.mjs --selftest      # 退回總帳／rework-log／5.1 對帳
+& ./HD5Skills/hd5-workitem/scripts/tests/workitem-ops.tests.ps1           # 工單工具（假 API）；devops-lib.tests.ps1 同
 ```
 
 ## 改套件的規則

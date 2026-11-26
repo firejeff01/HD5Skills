@@ -99,6 +99,18 @@ if ($Action -eq 'update' -and (Test-DevOpsStateNeedsAcceptanceGate -State $State
         -VerifyRoot $VerifyRoot -VerifyLibPath $vlib.Path -VerifyLibSearched $vlib.Searched
 }
 
+# 退回紀錄閘（2026-11-25）：改待驗收＝歷程退回 k 次要記滿 k 輪；改驗收完成＝結案報告 5.1＋退回總帳要齊。
+# 要讀工單歷程，所以在讀完工單後才判；改驗收完成缺 -CasePath 則在連網前就擋。
+$reworkStage = $null
+if ($Action -eq 'update') {
+    if (Test-DevOpsStateNeedsAcceptanceGate -State $State -AcceptanceStates $ctx.AcceptanceStates) { $reworkStage = 'accept' }
+    elseif (Test-HD5StateIsDone -State $State -DoneStates $ctx.DoneStates) {
+        $reworkStage = 'done'
+        if ([string]::IsNullOrWhiteSpace($CasePath)) { $null = Assert-HD5ReworkGate -CasePath $CasePath -SkipReason $SkipAcceptanceGate -Stage done -Preview:$WhatIfOnly -ActionLabel "改成「$State」" }
+    }
+}
+$ledgerTool = Resolve-HD5ToolFile -Name 'check-rework-ledger.mjs' -ToolsDir $ToolsDir -Context $ctx -ScriptRoot $PSScriptRoot
+
 # 目標解析在認證之前：缺專案網址時不會先去讀 PAT 檔
 $target = Resolve-WorkItemTarget -WorkItem $WorkItem -ProjectUrl $ProjectUrl -Context $ctx
 $auth = New-DevOpsAuthContext -Pat $Pat -PatFile $PatFile -ScriptRoot $PSScriptRoot -ForceWindows:$UseWindowsAuth -Write -TargetUrl "$($target.Origin)/$($target.Collection)"
@@ -110,6 +122,13 @@ try {
 $wi = Get-DevOpsWorkItem -Auth $auth -Target $target -SkipCertificateCheck:$SkipCertificateCheck
 $target = Resolve-WorkItemProject -Target $target -WorkItem $wi
 $loader = { param($id) Get-DevOpsWorkItem -Auth $auth -Target (New-WorkItemTargetObject -Id $id -Origin $target.Origin -Collection $target.Collection -Project $null) -SkipCertificateCheck:$SkipCertificateCheck }
+
+if ($reworkStage -and [string]::IsNullOrWhiteSpace($SkipAcceptanceGate) -and -not [string]::IsNullOrWhiteSpace($CasePath)) {
+    $updates = @(Get-DevOpsWorkItemUpdates -Auth $auth -Target $target -SkipCertificateCheck:$SkipCertificateCheck)
+    $k = Get-HD5RejectionCount -Updates $updates -RejectedStates $ctx.RejectedStates
+    $null = Assert-HD5ReworkGate -CasePath $CasePath -Stage $reworkStage -Rejections $k -WorkItemId ([string]$wi.id) `
+        -LedgerTool $ledgerTool.Path -LedgerToolSearched $ledgerTool.Searched -Preview:$WhatIfOnly -ActionLabel "改成「$State」"
+}
 
 switch ($Action) {
     'show' {

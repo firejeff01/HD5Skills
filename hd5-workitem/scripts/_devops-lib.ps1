@@ -118,6 +118,16 @@ function Get-DevOpsWorkItem {
     return Invoke-RestMethod @p
 }
 
+# 工單歷程（updates API，分頁讀完）：上傳結案報告時判斷需求方是否已驗收完成、數退回次數
+function Get-DevOpsWorkItemUpdates {
+    param(
+        [Parameter(Mandatory = $true)][string]$ApiRoot,
+        [Parameter(Mandatory = $true)][int]$Id,
+        [Parameter(Mandatory = $true)][hashtable]$Headers
+    )
+    return @(Get-HD5AllUpdates -Fetcher { param($top, $skip) $p = Get-DevOpsWebParams @{ Uri = "$ApiRoot/wit/workItems/$Id/updates?`$top=$top&`$skip=$skip&api-version=5.0"; Headers = $Headers }; Invoke-RestMethod @p })
+}
+
 # 留言（comments API，需要 project 段）；回傳原始留言物件陣列（id／text／createdBy／createdDate）
 function Get-DevOpsWorkItemComments {
     param(

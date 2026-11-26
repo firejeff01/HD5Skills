@@ -30,7 +30,7 @@ foreach ($id in 'f-a', 'f-b', 'f-c') {
 function New-Case([string]$name, [string]$route, [switch]$WithBugAnalysis, [switch]$WithGrill) {
     $c = Join-Path $ai "spec\$name"
     New-Item -ItemType Directory -Force (Join-Path $c 'case_spec_content') | Out-Null
-    $spec = "## 5. 驗收條件`n- [ ] x（@功能:f-a）"; if ($route) { $spec += "`n`n路線：$route，高風險：否，理由：測試" }
+    $spec = "## 5. 驗收條件`n- [ ] x（@功能:f-a）"; if ($route) { $spec += "`n`n路線：$route，高風險：否，外部系統：無，理由：測試" }
     Set-Content (Join-Path $c 'case_spec_content\spec_001.md') $spec -Encoding UTF8
     if ($WithGrill) { New-Item -ItemType Directory -Force (Join-Path $c 'pm'), (Join-Path $c 'sa') | Out-Null; Set-Content (Join-Path $c 'pm\grill-x.md') '已拍板' -Encoding UTF8; Set-Content (Join-Path $c 'sa\grill-x.md') '已拍板' -Encoding UTF8 }
     if ($WithBugAnalysis) { New-Item -ItemType Directory -Force (Join-Path $c 'sa') | Out-Null; Set-Content (Join-Path $c 'sa\bug-analysis.md') "## 原因`na`n## 影響範圍`nb`n## 同類位置`nc`n## 修法`nd`n## 待決事項`n待決事項：無" -Encoding UTF8 }
@@ -61,6 +61,12 @@ Write-Host '--- 指到案子：改用 validate-grill-gate 檢查那個案子 ---
 $r = Invoke-Hook 'backend-expert' '任務：修 AI_Service/spec/full-ok 的匯入'
 Check '四角色、紀錄齊 ⇒ 放行' ($r.Code -eq 0)
 Check '放行時回一行 additionalContext（validate 通過、代理、案子、exit 0、帶 GRILL_GATE=pass 摘要）' ((Test-PassLine $r 'backend-expert' 'full-ok' '0') -and $r.Ctx -match 'GRILL_GATE=pass role=backend')
+Check '沒有警告時放行訊息不帶警告' ($r.Ctx -notmatch 'grill-gate 警告')
+# 2026-11-25：閘的「grill-gate 警告：…」（外部系統宣告／樣本表／驗收回合，不擋）要跟著放行訊息交給主對話
+New-Case 'noext' '四角色' -WithGrill
+Set-Content (Join-Path $ai 'spec\noext\case_spec_content\spec_001.md') "## 5. 驗收條件`n- [ ] x（@功能:f-a）`n`n路線：四角色，高風險：否，理由：沒寫外部系統" -Encoding UTF8
+$r = Invoke-Hook 'backend-expert' '任務：修 AI_Service/spec/noext 的匯入'
+Check '閘有警告 ⇒ 照樣放行（exit 0），放行訊息帶出「grill-gate 警告：外部系統…」' ((Test-PassLine $r 'backend-expert' 'noext' '0') -and $r.Ctx -match 'grill-gate 警告：外部系統')
 $r = Invoke-Hook 'backend-expert' '任務：修 AI_Service/spec/bug-nosa 的匯入'
 Check '🔴 小問題沒有 SA 分析就派實作代理 ⇒ 攔（exit 2，帶 validate 的原因）' ($r.Code -eq 2 -and $r.Err -match 'bug-analysis')
 Check '攔下時 stdout 不印放行訊息' ($r.Out -notmatch '放行')

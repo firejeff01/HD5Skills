@@ -26,7 +26,8 @@ description: Azure DevOps 工單工具（跟程式技術、跟專案無關）。
 3. **PAT 不進版控、不印出、不代設**：PAT 只放環境變數或本機 PAT 檔；腳本只印「認證來源」不印 PAT。不要讀或顯示 PAT 檔內容；使用者沒設 PAT 時告訴他怎麼設，不要代打。（守衛：devops-lib.tests.ps1、無（腳本裡的 .gitignore 排除 PAT 檔；有沒有人把 PAT 貼進對話擋不住））
 4. **留言用使用者本人的口吻**：留言會以目前登入者（或 PAT 擁有者）的名義出現。寫給需求方看的要白話、列「驗收前要先做的事」、不寫內部代號；不寫連線字串、帳密、權杖、內網主機明細，不寫「AI 代為…」。（守衛：無（內容好壞要人看預覽判斷））
 5. **一律用 `&` 在目前 session 執行**腳本；若有沙箱擋對外連線，呼叫時要關沙箱（或請使用者在自己的終端機跑）。不要在對話裡手組 `Invoke-RestMethod` 打 API——走腳本才有預覽、狀態驗證與工單閘。（守衛：無（環境規則））
-
+6. 🔴 **退回要記帳才能再送驗、驗收完成要補 5.1 與總帳**：改「待驗收」時工單閘讀工單歷程，退回（`tracker.rejectedStates`）k 次而 `qa/rework-log.md` 記不到 k 輪就擋；
+   改「驗收完成」（`tracker.doneStates`）或工單已驗收完成後上傳結案報告時，報告 5.1、rework-log、退回總帳列數對不上就擋（第五節「退回紀錄閘」）。（守衛：_acceptance-gate.ps1、check-rework-ledger.mjs）
 ## 三、腳本（裝在 `<paths.tools>/workitem/`，預設 `AI_Service/hd5-tools/workitem/`）
 
 | 檔案 | 用途 |
@@ -37,7 +38,7 @@ description: Azure DevOps 工單工具（跟程式技術、跟專案無關）。
 | `upload-case-report.ps1` | 上傳結案報告 `ai-case-report.md` 到工單附件；**預設只預覽，`-Upload` 才上傳，上傳前過工單閘** |
 | `_auth.ps1` | 認證（唯一一份）：四支腳本共用，PAT 或 Windows 整合驗證 |
 | `_tracker-config.ps1` | 共用：往上找 `.claude/workflow.json`、讀 tracker、推專案網址、找功能地圖檢查器 |
-| `_acceptance-gate.ps1` | 工單閘（唯一一份）：改待驗收與上傳結案報告共用 |
+| `_acceptance-gate.ps1` | 工單閘（唯一一份）：改待驗收、改驗收完成與上傳結案報告共用；退回紀錄閘呼叫上一層的 `check-rework-ledger.mjs` |
 | `_workitem-ops-lib.ps1`、`_devops-lib.ps1` | 共用函式（不可直接執行） |
 | `pat.local.example.txt`、`.gitignore` | PAT 檔範本；排除 `pat.local.txt`、`pat.write.local.txt` |
 | `tests/workitem-ops.tests.ps1`、`tests/devops-lib.tests.ps1` | 離線測試（假 API，不連網、不需 PAT）。**改過腳本必跑，5.1 與 7 最後一行都要 `ALL PASSED`** |
@@ -58,6 +59,8 @@ description: Azure DevOps 工單工具（跟程式技術、跟專案無關）。
 | `tracker.type` | `azure-devops` 才能用本工具 |
 | `tracker.url` | 專案網址 |
 | `tracker.acceptanceStates`（選填） | 除了含「待驗收」的狀態以外，還要過工單閘的狀態名（例：英文流程的 `["Ready for UAT"]`） |
+| `tracker.rejectedStates`（選填） | 需求方退回的狀態名，預設 `["驗收未過"]`：工單歷程 State 變成它幾次＝退回幾次 |
+| `tracker.doneStates`（選填） | 需求方最終驗收通過的狀態名，預設 `["驗收完成"]`：改成它、或工單已進過它時上傳結案報告，要過退回紀錄閘的 done 檢查 |
 | `paths.aiService` | 案子 `spec/`、功能地圖 `verify/` 所在（預設 `AI_Service`） |
 | `paths.tools` | HD5 工具資料夾（功能地圖檢查器在這裡；預設 `AI_Service/hd5-tools`） |
 
@@ -93,6 +96,18 @@ PAT 檔＝一行 PAT（`#` 開頭與空白行略過），範本 `pat.local.examp
 - 沒給 `-CasePath` ⇒ 擋（提示用 `-SkipAcceptanceGate "<理由>"` 的條件）。上傳的預覽模式例外：只印「正式上傳會被擋」。
 - 預覽（`workitem-ops.ps1 -WhatIfOnly`；上傳沒帶 `-Upload` 或帶了 `-WhatIfOnly`）時工單閘沒過只印紅字「正式執行會被擋」與原因，讓使用者先看到；正式執行一定擋。
 - `-SkipAcceptanceGate "<理由>"`：理由空白（含全是空格）不算，照樣要 `-CasePath`；有理由就略過並印出「已略過工單閘：理由…」。
+### 退回紀錄閘（2026-11-25；讀完工單後判，因為要讀工單歷程）
+
+判定本體是 HD5 工具資料夾的 `check-rework-ledger.mjs`（要有 node；找不到工具或 node 就 fail closed），工具位置同上（`-ToolsDir` → `paths.tools` → 上一層）。
+
+| 時機 | 檢查 |
+|---|---|
+| `workitem-ops.ps1` 改「待驗收」 | 工單歷程 State 變成 `tracker.rejectedStates`（預設「驗收未過」）k 次 ⇒ `qa/rework-log.md` 要記滿 k 輪（`R1`、`R2`…，同輪多列算一輪），否則擋並說「要先記第幾輪退回」；k＝0 且沒有總帳就不跑 |
+| `workitem-ops.ps1` 改 `tracker.doneStates`（預設「驗收完成」）；`upload-case-report.ps1` 上傳時工單目前是、或歷程進過驗收完成 | rework-log 有 m 列 ⇒ `ai-case-report.md` 有 `### 5.1` 且表格 m 列、有「錯誤寫法」欄（m＝0 要寫「退回 0 次」）、總帳 `AI_Service/spec/rework-ledger.md` 有本案案號 m 列；也核對 rework-log 輪數 ≥ 歷程退回次數。改驗收完成沒給 `-CasePath` 在連網前就擋 |
+| 以上每次 | 總帳存在就一起跑 `--check --gate`：只查格式（8 欄、根因類別、錯誤寫法、對應規則寫法）與 rework-log／5.1／總帳對帳。「程式寫法類要有程式守衛、待辦拖著又再犯」**不在工單閘擋**，只在開發端 `--check`（verify）紅（`hd5-case-report` 第七節） |
+
+預覽照樣只印「正式執行會被擋」；`-SkipAcceptanceGate "<理由>"` 一併略過。
+
 - 工單閘**不檢查**、要人工核對的兩項（`hd5-onsite-gate` 第七節）：站上關卡報告的部署 commit 跟現在站上一致；留言稿列出全部 `未驗證` 項目與需要的資料。
 
 ## 六、動作
@@ -194,7 +209,8 @@ $wi = "AI_Service/hd5-tools/workitem"     # 依 workflow.json 的 paths.tools
 ## 九、維護
 
 - 改任何腳本後跑兩支測試，**pwsh 7 與 Windows PowerShell 5.1 都要 `ALL PASSED`**：
-  `pwsh -NoProfile -File tests/workitem-ops.tests.ps1`、`powershell -NoProfile -File tests/workitem-ops.tests.ps1`（devops-lib 同）。
+  在已開的 pwsh／powershell 用 `& ./tests/workitem-ops.tests.ps1`，或 `pwsh -NoProfile -Command "& './tests/workitem-ops.tests.ps1'; exit $LASTEXITCODE"`（devops-lib 同）。
+  不要用 `-File` 另開程序：端點防護（例 COMODO）會把它寫的檔關進隔離區，退回紀錄閘呼叫的 node 看不到測試資料而假失敗（2026-11-25 實測）。
   測試把 `Invoke-RestMethod`／`Invoke-WebRequest` 換成假的，任何未預期的呼叫直接失敗——**測試絕不連真的 Azure DevOps**。
 - 相容 5.1：不用 `??`、三元運算子；`-SkipCertificateCheck` 只在 7 才帶，5.1 用 `ServicePointManager` policy 並在 `finally` 還原；5.1 另開 TLS 1.2。
 - 認證、工單閘各只有一份（`_auth.ps1`、`_acceptance-gate.ps1`），不要在入口腳本複製。

@@ -37,6 +37,8 @@ foreach ($cand in (Join-Path $scripts '..\_verify-map-lib.ps1'), (Join-Path $scr
 }
 Check '找得到功能地圖檢查器 _verify-map-lib.ps1（安裝位置或套件原始碼）' ([bool]$vmSrc)
 if ($vmSrc) { Copy-Item -LiteralPath $vmSrc -Destination (Join-Path $iso 'tools') -Force }
+# 退回紀錄閘的總帳檢查器（同一層；它 import check-guard-refs.mjs）
+if ($vmSrc) { foreach ($n in 'check-rework-ledger.mjs', 'check-guard-refs.mjs') { $src = Join-Path (Split-Path -Parent $vmSrc) $n; if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $iso 'tools') -Force } } }
 $vmDir = Join-Path $iso 'tools'
 $scripts = Join-Path $iso 'tools\workitem'
 
@@ -329,6 +331,7 @@ $fakeTarget = [pscustomobject]@{ id = 281; fields = [pscustomobject]@{ 'System.T
 $global:HD5NetHandler = {
     param($Uri, $Method, $BodyText)
     if ($Method -eq 'Get' -and $Uri -match '/wit/workitems/281\?') { return $fakeTarget }
+    if ($Method -eq 'Get' -and $Uri -match '/wit/workItems/281/updates\?') { return [pscustomobject]@{ count = @($global:HD5Updates).Count; value = @($global:HD5Updates) } }
     if ($Method -eq 'Post' -and $Uri -match '/wit/attachments\?fileName=ai-case-report\.md') { return [pscustomobject]@{ id = 'att1'; url = "$Org/_apis/wit/attachments/att1" } }
     if ($Method -eq 'Patch' -and $Uri -match '/wit/workitems/281\?') { return $fakeTarget }
     throw "未預期的呼叫：$Method $Uri"
@@ -415,6 +418,32 @@ $post = @($global:HD5Net | Where-Object { $_.Method -eq 'Post' }); $patch = @($g
 Check '-Upload：上傳附件＋掛到工單各一次' (-not $r.Threw -and $post.Count -eq 1 -and $patch.Count -eq 1 -and $r.Out -match '已把 ai-case-report\.md（第 2 版）')
 Check '-Upload：PATCH 是陣列、只加 AttachedFile relation' ($patch.Count -eq 1 -and $patch[0].Body.TrimStart().StartsWith('[') -and $patch[0].Body -match 'AttachedFile' -and $patch[0].Body -notmatch 'System.State')
 Check '-Upload：輸出不含 PAT' ($r.Out -notmatch 'SECRETPAT123')
+
+Write-Host '--- upload-case-report：需求方驗收完成後上傳要有 5.1 與退回總帳（2026-11-25）---'
+$rl = "# 退回紀錄`n`n| 輪次 | 退回原因 | 處理類別 | 根因類別 | 錯誤寫法 | 為什麼 | 修正 |`n|---|---|---|---|---|---|---|`n| R1 | a | 程式錯誤 | 樣本不足 | 名稱只讀 Name 欄 | b | c |`n"
+$cDone = New-UpCase @{ 'Codex驗收結果_R1.md' = '總結：通過'; 'onsite-gate_R1.md' = $onsiteOk; 'rework-log.md' = $rl }
+$fakeTarget.fields.'System.State' = '驗收完成'
+$global:HD5Updates = @(
+    [pscustomobject]@{ id = 1; fields = [pscustomobject]@{ 'System.State' = [pscustomobject]@{ oldValue = '待驗收'; newValue = '驗收未過' } } },
+    [pscustomobject]@{ id = 2; fields = [pscustomobject]@{ 'System.State' = [pscustomobject]@{ oldValue = '待驗收'; newValue = '驗收完成' } } })
+$r = Up $cDone @{ Upload = $true }
+Check '🔴 已驗收完成後上傳：rework-log 1 列、報告沒有 5.1 ⇒ 擋、不上傳（有讀歷程）' ($r.Threw -and $r.Msg -match '5\.1' -and @($global:HD5Net | Where-Object { $_.Method -ne 'Get' }).Count -eq 0 -and @($global:HD5Net | Where-Object { $_.Uri -match '/updates\?' }).Count -ge 1)
+$r = Up $cDone @{}
+Check '已驗收完成、預覽：印「正式執行會被擋」、不擋不寫' (-not $r.Threw -and $r.Out -match '退回紀錄未通過（正式執行會被擋）' -and $r.Out -match '加 -Upload 會被擋' -and @($global:HD5Net | Where-Object { $_.Method -ne 'Get' }).Count -eq 0)
+$fakeTarget.fields.'System.State' = 'Closed'
+$r = Up $cDone @{ Upload = $true }
+Check '目前狀態已改成別的、但歷程進過「驗收完成」⇒ 一樣要檢查' ($r.Threw -and $r.Msg -match '5\.1')
+Write-Fixture (Join-Path $cDone 'ai-case-report.md') ($good + "`n### 5.1 退回檢討`n`n- 送驗 2 次、退回 1 次`n`n| 輪次 | 退回原因 | 根因類別 | 錯誤寫法 | 為什麼 | 規則 |`n|---|---|---|---|---|---|`n| R1 | a | 樣本不足 | 名稱只讀 Name 欄 | b | c |`n")
+$r = Up $cDone @{ Upload = $true }
+Check '🔴 已驗收完成：5.1 有 1 列、總帳沒有本案 ⇒ 擋' ($r.Threw -and $r.Msg -match '總帳')
+Write-Fixture (Join-Path (Split-Path -Parent $cDone) 'rework-ledger.md') "| 結案日 | 案號 | 輪次 | 根因類別 | 錯誤寫法 | 原因一句 | 為什麼沒先抓到 | 對應規則 |`n|---|---|---|---|---|---|---|---|`n| 2026-11-25 | #281 | R1 | 樣本不足 | 名稱只讀 Name 欄 | a | b | 無（x） |`n"
+$r = Up $cDone @{ Upload = $true }
+Check '已驗收完成：rework-log、5.1、總帳都 1 列 ⇒ 上傳' (-not $r.Threw -and @($global:HD5Net | Where-Object { $_.Method -eq 'Post' }).Count -eq 1)
+$fakeTarget.fields.'System.State' = 'Active'
+$global:HD5Updates = @()
+$cNotDone = New-UpCase @{ 'Codex驗收結果_R1.md' = '總結：通過'; 'onsite-gate_R1.md' = $onsiteOk; 'rework-log.md' = $rl }
+$r = Up $cNotDone @{ Upload = $true }
+Check '還沒驗收完成（QA 通過後第一次上傳）：不要求 5.1' (-not $r.Threw -and @($global:HD5Net | Where-Object { $_.Method -eq 'Post' }).Count -eq 1)
 $global:HD5NetHandler = $null
 }
 finally {
