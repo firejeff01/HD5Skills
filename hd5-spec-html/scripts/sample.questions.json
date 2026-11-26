@@ -1,0 +1,27 @@
+{
+  "specId": "spec_sample",
+  "title": "範例：銷售報表統計幣別",
+  "source": "case_spec_content/spec_sample.md",
+  "summary": "PM 在需求分析時遇到兩個分歧點，需要 PO 拍板。\n\n本檔是產生器的範例輸入，實際案子請照這個結構寫 {specId}.questions.json。",
+  "flow": ["使用者建立報表並選擇統計幣別", "系統依季度匯率換算營收", "彙總分頁依換算結果計算各區占比"],
+  "rules": [
+    { "field": "StatCurrencyId", "source": "幣別設定表", "rule": "只能選幣別設定表內的項目" }
+  ],
+  "questions": [
+    {
+      "id": "q1",
+      "title": "統計幣別的匯率要取哪一季？",
+      "context": "同一年度四季匯率不同，影響營收換算結果",
+      "options": ["報表建立當季", "使用者在報表上自選一筆", "每期各自對應該期季度"],
+      "allowOther": true
+    },
+    {
+      "id": "q2",
+      "title": "組織範圍可以選哪些層級？（可複選）",
+      "context": "目前系統的組織有三層",
+      "options": ["公司", "分公司", "部門"],
+      "multi": true,
+      "allowOther": false
+    }
+  ]
+}

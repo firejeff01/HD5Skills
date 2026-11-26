@@ -1,0 +1,4 @@
+# 範本：複製成 pat.local.txt（唯讀，Work Items - Read）或 pat.write.local.txt（寫入，Work Items - Read & Write），
+# 把下一行換成你自己的 Personal Access Token。真正的 pat*.local.txt 已被 .gitignore 排除，不要提交。
+# 以 # 開頭的行與空白行會被忽略，只取第一行有內容的。
+<在這裡貼上你的 PAT>

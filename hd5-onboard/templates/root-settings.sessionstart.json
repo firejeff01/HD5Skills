@@ -1,0 +1,17 @@
+{
+  "_說明": "選配（hd5-onboard 第 4 步）：專案在 repo 子目錄時，合併進 <repo 根>/.claude/settings.json。只看啟動目錄（cwd）在不在專案資料夾內，不在就提醒重開；永遠 exit 0、不擋。{{PREFIX}}＝專案資料夾加斜線（例 app/），{{PROJECT_DIR}}＝專案資料夾。",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "shopt -s nocasematch; case \"$PWD/\" in */{{PREFIX}}*) exit 0;; esac; echo '{\"systemMessage\":\"⚠ 這個 session 不是在專案資料夾 {{PROJECT_DIR}}/ 啟動：專案的子代理與 hook（質詢閘、主對話改檔守衛）都沒有載入，事後 cd 進去也不會補載。請關掉，改在 {{PROJECT_DIR}}/ 重新啟動 Claude Code。\",\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"⚠ 這個 session 不是在專案資料夾 {{PROJECT_DIR}}/ 啟動：專案的子代理與 hook（質詢閘、主對話改檔守衛）都沒有載入，事後 cd 進去也不會補載。請關掉，改在 {{PROJECT_DIR}}/ 重新啟動 Claude Code。（AI：在使用者重開之前不要派代理、不要改產品程式；先停下告訴使用者。）\"}}'; exit 0",
+            "timeout": 10,
+            "statusMessage": "HD5：檢查 session 是否在專案資料夾啟動"
+          }
+        ]
+      }
+    ]
+  }
+}

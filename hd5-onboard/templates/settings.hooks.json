@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in \"{{PREFIX}}AI_Service/hd5-tools/hooks/grill-gate.ps1\" \"AI_Service/hd5-tools/hooks/grill-gate.ps1\"; do [ -f \"$p\" ] && exec pwsh -NoProfile -ExecutionPolicy Bypass -Command \"\\$global:LASTEXITCODE = 0; & './$p'; if (\\$?) { exit 0 } elseif (\\$LASTEXITCODE) { exit \\$LASTEXITCODE } else { exit 1 }\"; done; echo \"⚠ HD5 hook：找不到 grill-gate.ps1（cwd=$PWD），本次派發沒有檢查質詢閘（不擋）\" >&2; echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"⚠ grill-gate.ps1 找不到（hook 沒生效）：本次派發沒有檢查質詢閘。請確認 session 是在專案資料夾啟動\"}}'; exit 0",
+            "timeout": 30,
+            "statusMessage": "grill-gate：派發前檢查案子的路線與質詢紀錄"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in \"{{PREFIX}}AI_Service/hd5-tools/hooks/main-edit-guard.ps1\" \"AI_Service/hd5-tools/hooks/main-edit-guard.ps1\"; do [ -f \"$p\" ] && exec pwsh -NoProfile -ExecutionPolicy Bypass -Command \"\\$global:LASTEXITCODE = 0; & './$p'; if (\\$?) { exit 0 } elseif (\\$LASTEXITCODE) { exit \\$LASTEXITCODE } else { exit 1 }\"; done; echo \"⚠ HD5 hook：找不到 main-edit-guard.ps1（cwd=$PWD），本次改檔沒有檢查主對話改檔守衛（不擋）\" >&2; echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"⚠ main-edit-guard.ps1 找不到（hook 沒生效）：本次改檔沒有檢查主對話改檔守衛。請確認 session 是在專案資料夾啟動\"}}'; exit 0",
+            "timeout": 30,
+            "statusMessage": "main-edit-guard：主對話改產品程式要派代理"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,245 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>HD5Skills 地圖</title>
+<style>
+:root{
+  --bg:#f6f4ef; --paper:#ffffff; --fg:#1d232b; --muted:#5b6470; --line:#dcd7cc; --code:#f0ede6;
+  --accent:#1f5f8b; --accent-soft:#e3eef6;
+  --p0:#6b4fa0; --p0-soft:#eee8f7;   /* 起手 */
+  --p1:#1f5f8b; --p1-soft:#e3eef6;   /* 需求設計 */
+  --p2:#2f7a4a; --p2-soft:#e4f2e8;   /* 實作 */
+  --p3:#9a5b00; --p3-soft:#fbf0dc;   /* 驗證 */
+  --p4:#a33a2c; --p4-soft:#f8e4e0;   /* 結案 */
+  --p5:#4f5b66; --p5-soft:#e9ecef;   /* 選配 */
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14181d; --paper:#1c2128; --fg:#e6e9ed; --muted:#9aa4b0; --line:#323a44; --code:#252b33;
+  --accent:#7db7e0; --accent-soft:#1d3142;
+  --p0:#b9a3e6; --p0-soft:#2a2340; --p1:#7db7e0; --p1-soft:#1d3142; --p2:#7cc796; --p2-soft:#1b3125;
+  --p3:#e8b45c; --p3-soft:#3a2d16; --p4:#ee8c7d; --p4-soft:#3d221e; --p5:#aab4be; --p5-soft:#2a3038; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#14181d; --paper:#1c2128; --fg:#e6e9ed; --muted:#9aa4b0; --line:#323a44; --code:#252b33;
+  --accent:#7db7e0; --accent-soft:#1d3142;
+  --p0:#b9a3e6; --p0-soft:#2a2340; --p1:#7db7e0; --p1-soft:#1d3142; --p2:#7cc796; --p2-soft:#1b3125;
+  --p3:#e8b45c; --p3-soft:#3a2d16; --p4:#ee8c7d; --p4-soft:#3d221e; --p5:#aab4be; --p5-soft:#2a3038; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.7 "Microsoft JhengHei","PingFang TC","Noto Sans TC","Segoe UI",system-ui,sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding-block:40px 80px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{border-bottom:2px solid var(--fg);padding-bottom:18px}
+.kicker{font-size:13px;letter-spacing:.12em;color:var(--muted)}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.25;margin:6px 0 10px;text-wrap:balance}
+.lede{font-size:17px;color:var(--muted);max-width:46em;margin:0}
+.back{display:inline-block;margin-top:14px;font-size:14px;color:var(--accent)}
+h2{font-size:23px;margin:52px 0 6px;text-wrap:balance}
+h2+p.sub{margin:0 0 16px;color:var(--muted);max-width:46em}
+code{font-family:Consolas,"Cascadia Mono",ui-monospace,monospace;font-size:.86em;background:var(--code);padding:1px 6px;border-radius:4px;overflow-wrap:anywhere}
+a{color:var(--accent)}
+
+/* 總覽：階段帶 */
+.lanes{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:22px}
+.lane{border-radius:10px;padding:12px 12px 14px;background:var(--ps);border-top:4px solid var(--pc);min-width:0;position:relative}
+.lane .step{font-size:12px;letter-spacing:.1em;color:var(--pc);font-weight:700}
+.lane h3{margin:2px 0 8px;font-size:17px}
+.lane .chips{display:flex;flex-direction:column;gap:6px}
+.chip{display:block;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:5px 9px;
+  font:13.5px/1.35 Consolas,"Cascadia Mono",ui-monospace,monospace;color:var(--fg);text-decoration:none;overflow-wrap:anywhere}
+.chip:hover{border-color:var(--pc)}
+.chip small{display:block;font:12.5px/1.35 "Microsoft JhengHei","PingFang TC",system-ui,sans-serif;color:var(--muted);margin-top:1px}
+.spine{margin-top:12px;display:grid;grid-template-columns:1fr;gap:10px}
+.band{border:1px dashed var(--line);border-radius:10px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;background:var(--paper)}
+.band b{font-size:14px;margin-right:4px}
+.band .chip{display:inline-block}
+.band span.desc{font-size:14px;color:var(--muted)}
+.p0{--pc:var(--p0);--ps:var(--p0-soft)} .p1{--pc:var(--p1);--ps:var(--p1-soft)} .p2{--pc:var(--p2);--ps:var(--p2-soft)}
+.p3{--pc:var(--p3);--ps:var(--p3-soft)} .p4{--pc:var(--p4);--ps:var(--p4-soft)} .p5{--pc:var(--p5);--ps:var(--p5-soft)}
+
+/* 詳細卡 */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.sk{background:var(--paper);border:1px solid var(--line);border-left:5px solid var(--pc);border-radius:10px;padding:16px 18px;min-width:0;scroll-margin-top:16px}
+.sk:target{outline:2px solid var(--pc);outline-offset:2px}
+.sk .head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:4px}
+.sk h3{margin:0;font:700 17px/1.3 Consolas,"Cascadia Mono",ui-monospace,monospace}
+.tag{font-size:12px;border-radius:999px;padding:0 9px;background:var(--ps);color:var(--pc);font-weight:600;white-space:nowrap}
+.tag.user{background:var(--p4-soft);color:var(--p4)}
+.tag.auto{background:var(--p2-soft);color:var(--p2)}
+.sk .one{margin:2px 0 10px;font-size:15.5px}
+.sk dl{margin:0;display:grid;grid-template-columns:4.6em 1fr;gap:4px 10px;font-size:14.5px}
+.sk dt{color:var(--muted)}
+.sk dd{margin:0;min-width:0}
+.say{display:inline-block;background:var(--accent-soft);border-radius:999px;padding:0 10px;margin:1px 4px 1px 0;font-size:14px}
+
+/* 表格 */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:9px 14px;border-bottom:1px solid var(--line)}
+th{font-size:12.5px;letter-spacing:.06em;color:var(--muted);font-weight:600;background:var(--code)}
+tr:last-child td{border-bottom:none}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:14px}
+@media (max-width:900px){.lanes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.lanes{grid-template-columns:1fr}.cards{grid-template-columns:1fr}.sk dl{grid-template-columns:1fr}.sk dt{margin-top:4px}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="kicker">HD5Skills · 12 個 skills</div>
+  <h1>Skills 地圖</h1>
+  <p class="lede">每個 skill 在一張案子的哪個階段出場、由誰使用、會自動啟動還是要你叫它、產出放在哪裡。點任一個名稱可以跳到它的說明卡。</p>
+  <a class="back" href="導入說明.html">← 回導入說明</a>
+</header>
+
+<h2>總覽：一張案子的五個階段</h2>
+<p class="sub">由左到右是一張案子的順序。下方兩條是不分階段、全程都會用到的 skill。</p>
+
+<div class="lanes">
+  <div class="lane p0"><div class="step">STEP 0</div><h3>起手</h3><div class="chips">
+    <a class="chip" href="#hd5-onboard">hd5-onboard<small>導入一次</small></a>
+  </div></div>
+  <div class="lane p1"><div class="step">STEP 1</div><h3>需求與設計</h3><div class="chips">
+    <a class="chip" href="#hd5-workitem">hd5-workitem<small>讀工單建案</small></a>
+    <a class="chip" href="#hd5-spec-html">hd5-spec-html<small>需求問卷</small></a>
+    <a class="chip" href="#hd5-grill">hd5-grill<small>質詢輪</small></a>
+  </div></div>
+  <div class="lane p2"><div class="step">STEP 2</div><h3>實作與測試</h3><div class="chips">
+    <a class="chip" href="#hd5-tdd">hd5-tdd<small>紅綠燈＋驗紅</small></a>
+    <a class="chip" href="#hd5-verify">hd5-verify<small>每條驗收條件自驗</small></a>
+  </div></div>
+  <div class="lane p3"><div class="step">STEP 3</div><h3>驗收</h3><div class="chips">
+    <a class="chip" href="#hd5-review">hd5-review<small>獨立驗收</small></a>
+    <a class="chip" href="#hd5-onsite-gate">hd5-onsite-gate<small>站上關卡</small></a>
+  </div></div>
+  <div class="lane p4"><div class="step">STEP 4</div><h3>結案</h3><div class="chips">
+    <a class="chip" href="#hd5-case-report">hd5-case-report<small>結案報告</small></a>
+    <a class="chip" href="#hd5-workitem">hd5-workitem<small>改狀態＋工單閘</small></a>
+  </div></div>
+</div>
+<div class="spine">
+  <div class="band p1"><b>全程</b><a class="chip" href="#hd5-workflow">hd5-workflow</a><span class="desc">流程總綱：判路線、派角色、過關卡</span><a class="chip" href="#hd5-no-hallucination">hd5-no-hallucination</a><span class="desc">查不到依據就提問，不腦補</span><a class="chip" href="#hd5-verify">hd5-verify</a><span class="desc">回報規則：已驗證／已完成未驗證／受阻</span></div>
+  <div class="band p5"><b>選配</b><a class="chip" href="#hd5-architecture">hd5-architecture</a><span class="desc">架構健檢，只有你能啟動，不綁任何案子</span></div>
+</div>
+
+<h2>每個 skill 在做什麼</h2>
+<p class="sub"><span class="tag auto">自動</span>＝輪到它時 AI 會自己用。<span class="tag user">你叫它</span>＝只在你說出口時才用。</p>
+
+<div class="cards">
+  <article class="sk p0" id="hd5-onboard"><div class="head"><h3>hd5-onboard</h3><span class="tag">起手</span><span class="tag user">你叫它</span></div>
+    <p class="one">把工作流導入一個 repo：掃描專案、讀懂架構、一題一題問你，再產生這個專案自己的規則檔。</p>
+    <dl><dt>誰用</dt><dd>主對話，每個專案導入一次</dd>
+    <dt>怎麼叫</dt><dd><span class="say">導入工作流</span><span class="say">掃描專案架構</span></dd>
+    <dt>產出</dt><dd><code>AGENTS.md</code>、<code>CLAUDE.md</code>、<code>.claude/agents/</code>、<code>.claude/workflow.json</code>、功能地圖骨架、<code>AI_Service/onboard/</code> 導入紀錄</dd>
+    <dt>把關</dt><dd><code>check-onboard.mjs</code>：分支沒問、還有待問題、規則沒有去向、產物被 .gitignore 忽略都會擋</dd></dl></article>
+
+  <article class="sk p1" id="hd5-workflow"><div class="head"><h3>hd5-workflow</h3><span class="tag">全程</span><span class="tag auto">自動</span></div>
+    <p class="one">流程總綱：接到需求就判定路線（四角色／PM 端已完成／小問題），照路線派角色、過關卡、結案。</p>
+    <dl><dt>誰用</dt><dd>主對話</dd>
+    <dt>何時</dt><dd>接到需求、工單、bug；問「這案子要派誰」「能不能跳過 SA」時</dd>
+    <dt>產出</dt><dd><code>spec_001.md</code> 文末的「路線：…，高風險：…，理由：…」</dd>
+    <dt>工具</dt><dd>所有關卡工具和 hook 都隨它裝進 <code>AI_Service/hd5-tools/</code></dd></dl></article>
+
+  <article class="sk p1" id="hd5-workitem"><div class="head"><h3>hd5-workitem</h3><span class="tag">建案／結案</span><span class="tag auto">自動</span></div>
+    <p class="one">Azure DevOps 工單工具：讀工單建案、看留言、留言、指派、改狀態、上傳結案報告。</p>
+    <dl><dt>誰用</dt><dd>主對話；只在 <code>tracker.type</code> 是 azure-devops 時安裝</dd>
+    <dt>怎麼叫</dt><dd><span class="say">貼工單網址</span><span class="say">改成待驗收</span><span class="say">在工單留言</span></dd>
+    <dt>產出</dt><dd><code>AI_Service/spec/&lt;案名&gt;/</code>（標題、描述、圖片、附件）</dd>
+    <dt>把關</dt><dd>工單閘：改「待驗收」或上傳報告前，自動檢查獨立驗收、站上關卡、功能地圖、每個 Pass 都有證據。留言和改狀態要你同意</dd></dl></article>
+
+  <article class="sk p1" id="hd5-spec-html"><div class="head"><h3>hd5-spec-html</h3><span class="tag">需求</span><span class="tag auto">自動</span></div>
+    <p class="one">把要給需求方回答的問題做成單檔 HTML 問卷。對方在瀏覽器勾選後儲存答覆，再轉回 Markdown 給 SA 和實作讀。</p>
+    <dl><dt>誰用</dt><dd>pm-expert 出題；主對話傳送、回收；sa 和實作代理讀答覆</dd>
+    <dt>何時</dt><dd>有問題要交給 PO、BA、客戶這類不看程式碼的人時</dd>
+    <dt>產出</dt><dd><code>pm/spec_{號碼}.html</code>、<code>pm/spec_{號碼}.questions.json</code>，以及回收的 <code>*_answer*.html</code></dd>
+    <dt>備註</dt><dd>可離線開，圖片內嵌。可選擇上傳工單附件、用 Teams 桌面版傳檔（限 Windows）</dd></dl></article>
+
+  <article class="sk p1" id="hd5-grill"><div class="head"><h3>hd5-grill</h3><span class="tag">需求與設計</span><span class="tag auto">PM／SA 自動</span></div>
+    <p class="one">質詢輪：把案子還沒決定的地方攤成決策樹，先查證再提問，附建議答案，一直問到每個分支都拍板。</p>
+    <dl><dt>誰用</dt><dd>pm-expert、sa-expert 一律自動跑；實作和 QA 只在你說出口時跑</dd>
+    <dt>怎麼叫</dt><dd><span class="say">grill 我</span><span class="say">質詢這份設計</span></dd>
+    <dt>產出</dt><dd><code>&lt;角色目錄&gt;/grill-{主題}.md</code>（拍板紀錄，效力等同需求答覆）；可沉澱 <code>CONTEXT.md</code> 詞彙表、<code>docs/adr/</code></dd>
+    <dt>把關</dt><dd>質詢閘 <code>validate-grill-gate.ps1</code>：質詢紀錄沒收斂，就不准派下一個角色</dd></dl></article>
+
+  <article class="sk p1" id="hd5-no-hallucination"><div class="head"><h3>hd5-no-hallucination</h3><span class="tag">全程</span><span class="tag auto">自動</span></div>
+    <p class="one">文件沒定義的事不腦補，改列問題清單。格式固定，每題附建議答案，跨輪用同一套 Q 編號。</p>
+    <dl><dt>誰用</dt><dd>所有角色</dd>
+    <dt>何時</dt><dd>上游文件找不到依據、發現自己在寫「應該是…」「通常會…」、同一句需求有兩種讀法時</dd>
+    <dt>產出</dt><dd>各角色的待確認清單（Q 編號）；嚴重到要決策時轉 <code>hd5-grill</code></dd></dl></article>
+
+  <article class="sk p2" id="hd5-tdd"><div class="head"><h3>hd5-tdd</h3><span class="tag">實作</span><span class="tag auto">自動</span></div>
+    <p class="one">紅綠燈紀律：QA 先交會失敗的測試，而且要為對的原因失敗；實作只寫讓它轉綠的最少程式；最後用 mutation 證明測試真的抓得到錯。</p>
+    <dl><dt>誰用</dt><dd>實作代理、qa-expert</dd>
+    <dt>何時</dt><dd>寫產品程式之前、寫測試時、判斷「這組測試算不算數」時</dd>
+    <dt>產出</dt><dd><code>qa/{功能名稱}-tdd-log.md</code>（紅燈證據、綠燈、mutation 結果）</dd>
+    <dt>重點</dt><dd>實作不准改 QA 的測試；跑之前先確認測試母體真的收得到東西（少跑不會報錯）</dd></dl></article>
+
+  <article class="sk p2" id="hd5-verify"><div class="head"><h3>hd5-verify</h3><span class="tag">全程</span><span class="tag auto">自動</span></div>
+    <p class="one">像使用者一樣驗證：照功能地圖把系統開起來，走真實使用者的路徑操作到最終結果，留證據、清理。也規定回報的寫法。</p>
+    <dl><dt>誰用</dt><dd>所有角色</dd>
+    <dt>何時</dt><dd>開工前、每完成一條驗收條件、獨立驗收核對證據、站上關卡、回報進度時</dd>
+    <dt>產出</dt><dd><code>AI_Service/verify/features/&lt;編號&gt;.md</code>（功能地圖）、證據檔</dd>
+    <dt>把關</dt><dd><code>verify-map-check.ps1</code>：地圖有佔位符、驗收項目對不到功能編號、Pass 沒有證據都會擋</dd></dl></article>
+
+  <article class="sk p3" id="hd5-review"><div class="head"><h3>hd5-review</h3><span class="tag">驗收</span><span class="tag auto">自動</span></div>
+    <p class="one">獨立驗收：開發完、合併前，交給沒參與開發的第三方唯讀審查整案的 diff 和行為證據。</p>
+    <dl><dt>誰用</dt><dd>主對話寫委託；有 Codex 用 Codex，沒有就派全新的 Claude 子代理（不能 fork）</dd>
+    <dt>怎麼叫</dt><dd><span class="say">送獨立驗收</span></dd>
+    <dt>產出</dt><dd><code>qa/獨立驗收委託_R{n}.md</code>、<code>qa/{Codex|Claude}驗收結果_R{n}.md</code></dd>
+    <dt>規則</dt><dd>委託只給事實、不給結論。總結只有三種：通過／不通過（P0 n／P1 n／P2 n）／受阻（缺 X）。只修 P1；受阻補齊後重送 R{n}b</dd></dl></article>
+
+  <article class="sk p3" id="hd5-onsite-gate"><div class="head"><h3>hd5-onsite-gate</h3><span class="tag">驗收</span><span class="tag auto">自動</span></div>
+    <p class="one">站上關卡：部署到測試環境後、通知需求方之前，先確認站上跑的是這一版，再逐條操作到最終結果。</p>
+    <dl><dt>誰用</dt><dd>主對話</dd>
+    <dt>怎麼叫</dt><dd><span class="say">上站驗一下</span><span class="say">送 PM 前檢查</span></dd>
+    <dt>產出</dt><dd><code>qa/onsite-gate_R{n}.md</code>：A 表是驗收項目加證據，B 表是專案自訂的平台契約，最後一行是三態總結</dd>
+    <dt>把關</dt><dd><code>verify-map-check.ps1 -Onsite</code>；沒通過就不能改「待驗收」</dd></dl></article>
+
+  <article class="sk p4" id="hd5-case-report"><div class="head"><h3>hd5-case-report</h3><span class="tag">結案</span><span class="tag auto">自動</span></div>
+    <p class="one">結案報告：給下一張工單看的交接記憶。檔名固定、8 節固定，附 commit hash。</p>
+    <dl><dt>誰用</dt><dd>主對話；QA 和站上關卡都通過後產出</dd>
+    <dt>怎麼叫</dt><dd><span class="say">寫結案報告</span><span class="say">交接</span></dd>
+    <dt>產出</dt><dd><code>AI_Service/spec/&lt;案名&gt;/ai-case-report.md</code>；有工單系統時掛到來源工單</dd>
+    <dt>8 節</dt><dd>需求一句話、實際交付的驗收條件、改動範圍、關鍵裁定、測試與驗收結果、未盡事項、引用、給下一張工單的時效驗證</dd></dl></article>
+
+  <article class="sk p5" id="hd5-architecture"><div class="head"><h3>hd5-architecture</h3><span class="tag">選配</span><span class="tag user">只有你能叫</span></div>
+    <p class="one">架構健檢：從 git 熱點找出淺模組和架構摩擦點，做成候選卡片報告。你選定候選項後，再用質詢輪深挖到可以動工。</p>
+    <dl><dt>誰用</dt><dd>主對話；任何代理都不能自己啟動</dd>
+    <dt>怎麼叫</dt><dd><span class="say">架構健檢</span><span class="say">哪裡該重構</span></dd>
+    <dt>產出</dt><dd><code>reports/architecture-review-{YYYYMMDD}.html</code>、<code>reports/grill-arch-{候選項}.md</code></dd>
+    <dt>重點</dt><dd>全程只規劃，不寫程式</dd></dl></article>
+</div>
+
+<h2>角色與代理</h2>
+<p class="sub">角色定義只有一份，放在 <code>.claude/agents/&lt;角色&gt;.md</code>。Claude 把它當子代理派出去；Codex 沒有子代理，擔任某個角色時就完整讀那份檔照做。</p>
+<div class="tbl"><table>
+  <thead><tr><th>角色</th><th>代理</th><th>做什麼</th><th>主要用到的 skill</th></tr></thead>
+  <tbody>
+    <tr><td>主對話</td><td>（你正在對話的那個 AI）</td><td>建案、判路線、派角色、把待決事項一題一題問你、合併、站上關卡、結案。<strong>不直接改產品程式</strong></td><td>workflow、workitem、review、onsite-gate、case-report</td></tr>
+    <tr><td>PM</td><td><code>pm-expert</code></td><td>需求分析、驗收條件、質詢輪</td><td>grill、spec-html、no-hallucination</td></tr>
+    <tr><td>SA</td><td><code>sa-expert</code></td><td>掃描專案、技術設計；小問題路線改做盤查，寫 <code>sa/bug-analysis.md</code></td><td>grill、no-hallucination、verify</td></tr>
+    <tr><td>實作</td><td><code>workflow.json</code> 的 implementers（預設 <code>backend-expert</code>／<code>frontend-expert</code>）</td><td>TDD 加驗紅；修之前先列出同類位置</td><td>tdd、verify</td></tr>
+    <tr><td>QA</td><td><code>qa-expert</code></td><td>實作前先交測試計畫與會失敗的測試（Red）；實作後對照每個情境讀測試程式、測試報告、資安（順序：QA → 實作 → QA）</td><td>tdd、verify</td></tr>
+    <tr><td>獨立審查者</td><td>Codex，或全新的子代理</td><td>唯讀審查整案的 diff 和行為證據</td><td>review</td></tr>
+  </tbody>
+</table></div>
+
+<h2>會擋人的關卡</h2>
+<p class="sub">都在 <code>AI_Service/hd5-tools/</code>。Claude 由 hook 自動觸發；Codex 沒有 hook，派發前要自己跑質詢閘。</p>
+<div class="tbl"><table>
+  <thead><tr><th>關卡</th><th>工具</th><th>什麼時候</th><th>擋什麼</th></tr></thead>
+  <tbody>
+    <tr><td>質詢閘</td><td><code>validate-grill-gate.ps1</code></td><td>派 SA／實作／QA 前</td><td>沒寫路線、有路線卻跳步、小問題缺 SA 分析、高風險缺對抗輪、質詢紀錄沒收斂或還有待拍板題、PM 問卷沒有回收答覆、功能地圖不合格</td></tr>
+    <tr><td>派發 hook</td><td><code>hooks/grill-gate.ps1</code></td><td>Claude 每次派子代理</td><td>prompt 指到某個案子時，自動呼叫質詢閘；放行也會回一行訊息（看不到＝hook 沒載入）</td></tr>
+    <tr><td>主對話改檔 hook</td><td><code>hooks/main-edit-guard.ps1</code></td><td>Claude 主對話每次改檔</td><td>工作分支上有進行中的案子時，主對話改產品程式就擋，並建議該派誰（例外要你同意並寫進 spec_001）</td></tr>
+    <tr><td>功能地圖</td><td><code>verify-map-check.ps1</code></td><td>開工、站上關卡、工單閘</td><td>地圖有佔位符、驗收項目對不到功能編號、Pass 沒證據</td></tr>
+    <tr><td>守衛對帳</td><td><code>check-guard-refs.mjs</code></td><td>每次跑守衛、新增 🔴 規則時</td><td>🔴 規則沒有標「（守衛：…）」</td></tr>
+    <tr><td>導入把關</td><td><code>check-onboard.mjs</code>（在 hd5-onboard）</td><td>導入結束時</td><td>分支沒問、有待問題、舊規則沒有去向、產物被 .gitignore 忽略</td></tr>
+    <tr><td>工單閘</td><td><code>workitem/_acceptance-gate.ps1</code></td><td>改「待驗收」、上傳結案報告前</td><td>缺獨立驗收結果、缺站上關卡報告、功能地圖不合格、Pass 沒證據</td></tr>
+  </tbody>
+</table></div>
+
+<footer>
+  HD5Skills · 2026-11 版 · 每個 skill 的完整規則見母版 <code>HD5Skills/&lt;skill&gt;/SKILL.md</code> · <a href="導入說明.html">導入說明</a>
+</footer>
+</div>
