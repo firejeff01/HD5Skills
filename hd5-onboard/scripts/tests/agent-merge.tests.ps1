@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   _agent-merge-lib.ps1（代理檔三方比對）離線測試。執行：pwsh -File hd5-onboard/scripts/tests/agent-merge.tests.ps1；最後一行要是 ALL PASSED。
 #>

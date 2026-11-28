@@ -11,6 +11,8 @@ $first = { param($c) $c | Where-Object { Test-Path $_ } | Select-Object -First 1
 $realGate = (Resolve-Path (& $first @((Join-Path $PSScriptRoot '..\..\validate-grill-gate.ps1'), (Join-Path $PSScriptRoot '..\..\..\AI_Service\.agents\skills\imocore-vue3-workflow\scripts\validate-grill-gate.ps1')))).Path
 $realLib = (Resolve-Path (& $first @((Join-Path $PSScriptRoot '..\..\_verify-map-lib.ps1'), (Join-Path $PSScriptRoot '..\..\..\AI_Service\agent\scripts\_verify-map-lib.ps1')))).Path
 $script:fail = 0
+# hook 在專案裡一律由 pwsh（PowerShell 7）執行（settings.hooks.json）⇒ 測試也用 pwsh 跑 hook；本測試本身 7 與 5.1 都能跑
+$script:selfExe = $($c = Get-Command pwsh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $c.Source } else { (Get-Process -Id $PID).Path })
 function Check($name, $cond) { if ($cond) { Write-Host "  ok   $name" } else { Write-Host "  FAIL $name" -ForegroundColor Red; $script:fail++ } }
 
 # 暫存的 IMOCore 根：AI_Service/（真的 validate-grill-gate 與 verify lib）＋功能地圖＋兩個案子
@@ -42,11 +44,11 @@ New-Case 'noroute' '' -WithGrill
 
 function Invoke-Hook([string]$agent, [string]$prompt) {
     $json = @{ tool_name = 'Agent'; cwd = $root; tool_input = @{ subagent_type = $agent; prompt = $prompt } } | ConvertTo-Json -Compress
-    $psi = [Diagnostics.ProcessStartInfo]::new([Environment]::ProcessPath, "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"`$global:LASTEXITCODE = 0; & '$($hook.Replace("'", "''"))'; if (`$?) { exit 0 } elseif (`$LASTEXITCODE) { exit `$LASTEXITCODE } else { exit 1 }`"")
+    $psi = [Diagnostics.ProcessStartInfo]::new($script:selfExe, "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"`$global:LASTEXITCODE = 0; & '$($hook.Replace("'", "''"))'; if (`$?) { exit 0 } elseif (`$LASTEXITCODE) { exit `$LASTEXITCODE } else { exit 1 }`"")
     $psi.RedirectStandardInput = $true; $psi.RedirectStandardError = $true; $psi.RedirectStandardOutput = $true; $psi.UseShellExecute = $false
     $psi.WorkingDirectory = $root
-    $psi.StandardInputEncoding = [Text.UTF8Encoding]::new($false); $psi.StandardErrorEncoding = [Text.Encoding]::UTF8; $psi.StandardOutputEncoding = [Text.Encoding]::UTF8
-    $p = [Diagnostics.Process]::Start($psi); $p.StandardInput.Write($json); $p.StandardInput.Close()
+    $psi.StandardErrorEncoding = [Text.Encoding]::UTF8; $psi.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $p = [Diagnostics.Process]::Start($psi); $p.StandardInput.BaseStream.Write(($jb = [Text.UTF8Encoding]::new($false).GetBytes($json)), 0, $jb.Length); $p.StandardInput.Close()
     $so = $p.StandardOutput.ReadToEndAsync(); $err = $p.StandardError.ReadToEnd(); $p.WaitForExit()
     $ctx = $null; try { $ctx = ($so.Result.Trim() | ConvertFrom-Json).hookSpecificOutput } catch { }
     [pscustomobject]@{ Code = $p.ExitCode; Err = $err; Out = $so.Result; Ctx = $(if ($ctx) { [string]$ctx.additionalContext } else { '' }); Event = $(if ($ctx) { [string]$ctx.hookEventName } else { '' }) }

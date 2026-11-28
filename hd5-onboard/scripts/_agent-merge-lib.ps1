@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   代理檔（.claude/agents/*.md）的三方比對合併：以「## 小節」為單位比「基準（上次同步的範本）／新範本／專案現在的檔」。
   install.ps1 -Update 用；純函式，不讀寫檔（測試：tests/agent-merge.tests.ps1）。
