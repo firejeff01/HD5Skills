@@ -32,6 +32,8 @@
      pm/ 或 sa/ 的 grill-*.md 要有標題含「驗收回合」與 R{k} 的小節，內有已拍板／已查證／已轉單且沒有待拍板行（同 exit 12 判定）
      ⇒ 否則警告（不擋）。依據：#2164 R3／R4 新規則照自己理解做，又退一輪。
   1f. 逃逸（2026-11-28，路線＝小問題，-Role 實作角色|qa）：sa/bug-analysis*.md 要寫「逃逸：是，來源 #NNN」或「逃逸：否（理由）」⇒ 否則警告（不擋）。
+  1g. 前提檢查（2026-11-28，-Role 實作角色|qa；-Skip 時一起跳過）：qa/rework-log.md 同一根因類別（新需求除外）出現在兩輪以上 ⇒
+     要有一行「前提檢查 R{最近那一輪}：…」⇒ 否則警告（不擋）。
   1e. 設計形狀（2026-11-28，路線＝四角色／PM 端已完成，-Role 實作角色|qa；-Skip 時一起跳過）：sa/grill-*.md 要有標題含「設計形狀」的小節，
      內有已拍板／已查證／已轉單或 N/A ⇒ 否則警告（不擋）。依據：hd5-grill 第三節第十分支只寫在 skill，子代理很少讀 skills。
   2. 功能地圖閘（2026-11-22，僅 -Role 實作角色|qa）：
@@ -48,7 +50,7 @@
   & ./validate-grill-gate.ps1 -Role backend -CasePath AI_Service/spec/<舊案> -SkipRoute "11-23 前已進 PG" -Skip
   exit 碼：0 通過｜1 角色不認得｜2～4 質詢紀錄｜5～7 功能地圖｜8 沒寫路線｜9 有路線又 -Skip｜10 小問題缺 SA 分析｜
            11 沒標高風險或高風險缺對抗輪｜12 grill 紀錄還有待拍板題｜13 PM 問卷沒有回收答覆
-           警告（不改 exit 碼，stdout 印「grill-gate 警告：…」）：沒寫外部系統｜外部系統＝有但樣本表缺或不齊｜新規則退回缺驗收回合質詢｜SA 缺設計形狀小節｜小問題沒寫逃逸
+           警告（不改 exit 碼，stdout 印「grill-gate 警告：…」）：沒寫外部系統｜外部系統＝有但樣本表缺或不齊｜新規則退回缺驗收回合質詢｜SA 缺設計形狀小節｜小問題沒寫逃逸｜同一根因連兩輪沒寫前提檢查
 #>
 [CmdletBinding()]
 param(
@@ -340,6 +342,29 @@ if ($isDownstream -and -not $Skip) {
             }
             $grillNote += " rework-rules=$(($ruleRounds | ForEach-Object { "R$_" }) -join ',')"
         }
+    }
+}
+
+# ── 1g. 同一根因連兩輪退回 ⇒ 先驗前提（派實作／QA 前；-Skip 時一起跳過；2026-11-28，只警告）───────
+# 同一案的 qa/rework-log.md 裡，同一個根因類別（新需求除外）出現在兩輪以上 ⇒ 兩次修法很可能建立在同一個錯的前提上。
+# 派下一次修之前，rework-log 要有一行「前提檢查 R{k}：…」（k＝最近那一輪）：寫出共同的前提、怎麼直接驗的、結果（hd5-workflow「驗收退回之後」）。
+if ($isDownstream -and -not $Skip) {
+    $rwPath2 = Join-Path $resolvedCase 'qa\rework-log.md'
+    if (Test-Path -LiteralPath $rwPath2) {
+        Assert-VerifyLib '前提檢查'
+        $rw2 = Get-ReworkLog -Path $rwPath2
+        $rwText = Get-Content -Raw -LiteralPath $rwPath2 -Encoding UTF8
+        $repeat = @($rw2.Rows | Where-Object { $_.RootCause -and $_.RootCause -ne '新需求' } | Group-Object RootCause |
+            Where-Object { @($_.Group | ForEach-Object { $_.Round } | Sort-Object -Unique).Count -ge 2 })
+        foreach ($g in $repeat) {
+            $rounds = @($g.Group | ForEach-Object { $_.Round } | Sort-Object -Unique)
+            $latestR = $rounds[-1]
+            if ($rwText -notmatch "(?m)前提檢查\s*R\s*$latestR(?!\d)[^\r\n]*[:：]\s*\S") {
+                $gateWarnings += ("前提檢查：qa/rework-log.md 的根因「$($g.Name)」在 $(($rounds | ForEach-Object { "R$_" }) -join '、') 都出現——" +
+                    "派下一次修之前，先把這幾次修法共同依賴的前提寫成一行「前提檢查 R$($latestR)：前提是…；怎麼直接驗的…；結果…」並真的驗過（hd5-workflow「驗收退回之後」）")
+            }
+        }
+        if ($repeat.Count) { $grillNote += " repeat-cause=$(($repeat | ForEach-Object { $_.Name }) -join ',')" }
     }
 }
 

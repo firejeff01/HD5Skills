@@ -359,6 +359,27 @@ foreach ($exe in @($selfExe)) {
     $r = Run @('-Role', 'backend', '-CasePath', $nwc.Case, '-VerifyRoot', $realVerify)
     Check "$tag 沒有警告 ⇒ 不印摘要" ($r.Out -notmatch '警告摘要')
 
+    Write-Host "--- $tag 同一根因連兩輪退回 ⇒ 前提檢查（2026-11-28，只警告）---"
+    $pc = New-Case "@功能:$existing"; $cases += $pc
+    New-Item -ItemType Directory -Force (Join-Path $pc.Case 'qa') | Out-Null
+    $pl = Join-Path $pc.Case 'qa\rework-log.md'
+    $plHead = "# 退回紀錄`n| 輪次 | 退回原因 | 處理類別 | 根因類別 | 錯誤寫法 | 為什麼沒先抓到 | 修正 |`n|---|---|---|---|---|---|---|"
+    Set-Content $pl "$plHead`n| R1（11/23） | 某電號抓不到 | 程式錯誤 | 樣本不足 | 只測一種電號 | 樣本少 | a1 |`n| R2（11/24） | 某帳期抓不到 | 程式錯誤 | 動作順序 | 先存後算 | 沒測順序 | a2 |" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $pc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 根因各不相同 ⇒ 不要求前提檢查" ($r.Code -eq 0 -and $r.Out -notmatch '前提檢查')
+    Set-Content $pl "$plHead`n| R1（11/23） | 某電號抓不到 | 程式錯誤 | 樣本不足 | 只測一種電號 | 樣本少 | a1 |`n| R2（11/24） | 另一種電號也抓不到 | 程式錯誤 | 樣本不足 | 只補了一種 | 樣本少 | a2 |" -Encoding UTF8
+    $r = Run @('-Role', 'qa', '-CasePath', $pc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 🔴 同一根因（樣本不足）在 R1、R2 都出現、沒寫前提檢查 ⇒ 警告點名根因與 R2、不擋" ((Warned $r '前提檢查') -and ($r.Out -replace '\s+', '') -match '樣本不足.*R1、R2' -and $r.Out -match 'repeat-cause=樣本不足')
+    Add-Content $pl "`n前提檢查 R1：前提是電號只有一種格式；（舊的，不算）" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $pc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 只寫了別輪（R1）的前提檢查 ⇒ 仍警告" ((Warned $r '前提檢查'))
+    Add-Content $pl "前提檢查 R2：前提是「需求方給的樣本涵蓋所有電號格式」；唯讀查詢正式資料的電號長度分布 ⇒ 有 3 種，前提被推翻" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $pc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 寫了「前提檢查 R2：…」⇒ 不警告" ($r.Code -eq 0 -and $r.Out -notmatch '前提檢查：')
+    Set-Content $pl "$plHead`n| R1 | 要加匯出 | 新規則 | 新需求 | 不是程式寫法（x） | 新需求 | — |`n| R2 | 又要加欄位 | 新規則 | 新需求 | 不是程式寫法（y） | 新需求 | — |" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $pc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 根因＝新需求連兩輪 ⇒ 豁免" ($r.Out -notmatch '前提檢查')
+
     Write-Host "--- $tag 小問題的逃逸標記（2026-11-28，只警告）---"
     $r = Run @('-Role', 'backend', '-CasePath', $bc.Case, '-VerifyRoot', $realVerify)
     Check "$tag 🔴 bug-analysis 沒寫「逃逸：」⇒ 派實作印警告、不擋（exit 0）" ((Warned $r '逃逸') -and $r.Out -match 'GRILL_GATE=pass')

@@ -47,6 +47,7 @@ spec／verify 與 PAT 檔；不刪檔，套件已不含的檔只列出來請你�
 ```powershell
 & ./HD5Skills/install.ps1 -RepoRoot D:\work\MyRepo [-ProjectDir src\MyApp] -Update
 & ./HD5Skills/install.ps1 -RepoRoot D:\work\MyRepo [-ProjectDir src\MyApp] -Update -AcceptAgents sa-expert   # 合併完 sa-expert 的衝突後
+& ./HD5Skills/install.ps1 -RepoRoot D:\work\MyRepo [-ProjectDir src\MyApp] -Update -InstallPreCommit         # 選配：commit 前掃密鑰（已有別的 pre-commit 不覆蓋）
 ```
 
 ## 技能清單
@@ -82,13 +83,13 @@ spec／verify 與 PAT 檔；不刪檔，套件已不含的檔只列出來請你�
 
 糾正一次就變成確定性檢查（Lauren Tan）：產品程式架構（型別／API／目錄邊界）→ 靜態檢查（棘輪、lint、架構測試）→ 自動化驗證 → 流程閘 → 文字。
 
-- **會擋人的流程閘**只有質詢閘 exit 2～13、功能地圖、工單閘（獨立驗收／站上關卡通過、退回紀錄與上線後缺陷 `check-rework-ledger.mjs --gate`、密鑰掃描 `check-secrets.mjs`）。密鑰掃描送獨立驗收前由主對話先跑一次，改待驗收時工單閘再用委託檔的受驗範圍自動跑一次。
+- **會擋人的流程閘**只有質詢閘 exit 2～13、功能地圖、工單閘（獨立驗收／站上關卡通過、退回紀錄與上線後缺陷 `check-rework-ledger.mjs --gate`、密鑰掃描 `check-secrets.mjs`）。密鑰掃描送獨立驗收前由主對話先跑一次，改待驗收時工單閘再用委託檔的受驗範圍自動跑一次；選配 `-InstallPreCommit` 再加一道 commit 前的掃描。
 - **退回檢討循環**：每次驗收退回記 `qa/rework-log.md`（含「錯誤寫法」欄）→ 驗收完成時結案報告 5.1＋專案總帳 `AI_Service/spec/rework-ledger.md`；
   程式寫法類的根因第一次就要對應程式守衛（或 `待辦（G-NN）`），否則 `check-rework-ledger.mjs --check`（verify）紅，不擋工單結案。
 - **上線後才發現的缺陷**（2026-11-28）：走小問題路線修，SA 寫 `逃逸：是，來源 #NNN`；結案時總帳記一列 來源案、輪次＝`上線`，工單閘與 `--check` 會對。
 - **資安掃描**（2026-11-28）：送獨立驗收前跑 `check-secrets.mjs --diff <起點>..<終點>`（密鑰），加上 AGENTS.md 寫的相依套件弱點掃描，結果附在委託檔；有發現列 P0。
 - **只警告、不擋**（需求溝通與人工步驟，擋了容易被敷衍或繞過；真正的防線在產品程式層）：
-  - 質詢閘先印一行「grill-gate 警告摘要：共 N 項（類別…）」，再逐項印「grill-gate 警告：[i/N] …」（派發 hook 帶進放行訊息）：`spec_*.md` 沒寫「外部系統：有｜無」（建議寫在路線那一行：`路線：…，高風險：…，外部系統：無，理由：…`）；外部系統＝有但 `sa/external-samples.md` 缺或樣本不齊；rework-log 有「新規則」退回但 grill 沒有收斂完的「驗收回合 R{k}」小節；四角色／PM 端已完成但 SA 的 grill 沒有收斂的「設計形狀」小節；小問題的 `sa/bug-analysis.md` 沒寫「逃逸：」。
+  - 質詢閘先印一行「grill-gate 警告摘要：共 N 項（類別…）」，再逐項印「grill-gate 警告：[i/N] …」（派發 hook 帶進放行訊息）：`spec_*.md` 沒寫「外部系統：有｜無」（建議寫在路線那一行：`路線：…，高風險：…，外部系統：無，理由：…`）；外部系統＝有但 `sa/external-samples.md` 缺或樣本不齊；rework-log 有「新規則」退回但 grill 沒有收斂完的「驗收回合 R{k}」小節；四角色／PM 端已完成但 SA 的 grill 沒有收斂的「設計形狀」小節；小問題的 `sa/bug-analysis.md` 沒寫「逃逸：」；`qa/rework-log.md` 同一根因類別連兩輪卻沒有「前提檢查 R{k}：」。
   - 站上關卡（`verify-map-check.ps1 -Onsite` 與工單閘）印「⚠ 站上關卡警告（不擋）：…」：退回後沒有（新打通）列，寫 `新打通：無（理由）` 消除；同一項連兩輪「未驗證（待使用者動作）」，寫 `使用者放行：<項目>…（MM-DD）` 消除。
   - 外部系統每種變化要有**產品程式層的樣本契約測試**，站上不再逐種列 A 項。
 

@@ -160,7 +160,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <dt>怎麼叫</dt><dd><span class="say">grill 我</span><span class="say">質詢這份設計</span></dd>
     <dt>產出</dt><dd><code>&lt;角色目錄&gt;/grill-{主題}.md</code>（拍板紀錄，效力等同需求答覆）；可沉澱 <code>CONTEXT.md</code> 詞彙表、<code>docs/adr/</code></dd>
     <dt>重點</dt><dd>八個標準分支，外部系統案另加第九分支；SA 另加第十分支「設計形狀」：資料形狀、領域規則放哪、邊界、冪等、共用狀態、重新設計還是接上去，重要決定列 2～3 個方案並排比較</dd>
-    <dt>把關</dt><dd>質詢閘 <code>validate-grill-gate.ps1</code>：質詢紀錄沒收斂，就不准派下一個角色；SA 的紀錄沒有「設計形狀」小節只警告、不擋；有警告時先印一行摘要（共幾項、哪幾類），再逐項編號</dd></dl></article>
+    <dt>把關</dt><dd>質詢閘 <code>validate-grill-gate.ps1</code>：質詢紀錄沒收斂，就不准派下一個角色；SA 的紀錄沒有「設計形狀」小節只警告、不擋；有警告時先印一行摘要（共幾項、哪幾類），再逐項編號。同一根因連兩輪被退回卻沒寫「前提檢查」也會警告</dd></dl></article>
 
   <article class="sk p1" id="hd5-no-hallucination"><div class="head"><h3>hd5-no-hallucination</h3><span class="tag">全程</span><span class="tag auto">自動</span></div>
     <p class="one">文件沒定義的事不腦補，改列問題清單。格式固定，每題附建議答案，跨輪用同一套 Q 編號。</p>
@@ -237,7 +237,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <tr><td>主對話改檔 hook</td><td><code>hooks/main-edit-guard.ps1</code></td><td>Claude 主對話每次改檔</td><td>工作分支上有進行中的案子時，主對話改產品程式就擋，並建議該派誰（例外要你同意並寫進 spec_001）</td></tr>
     <tr><td>功能地圖</td><td><code>verify-map-check.ps1</code></td><td>開工、站上關卡、工單閘</td><td>地圖有佔位符、驗收項目對不到功能編號、Pass 沒證據</td></tr>
     <tr><td>退回總帳</td><td><code>check-rework-ledger.mjs</code></td><td>改待驗收、驗收完成、上傳結案報告（工單閘自動跑）</td><td>退回沒記進 rework-log、5.1 和總帳列數對不上、小問題寫了「逃逸：是」卻沒在總帳記「上線」那一列</td></tr>
-    <tr><td>密鑰掃描</td><td><code>check-secrets.mjs</code></td><td>送獨立驗收前；改待驗收時工單閘自動再跑</td><td>diff 新增的行裡有私鑰、雲端金鑰、權杖、寫死的密碼或連線字串密碼（只印遮罩後的片段）</td></tr>
+    <tr><td>密鑰掃描</td><td><code>check-secrets.mjs</code></td><td>送獨立驗收前；改待驗收時工單閘自動再跑；選裝 pre-commit 時每次 commit 前</td><td>diff 新增的行裡有私鑰、雲端金鑰、權杖、寫死的密碼或連線字串密碼（只印遮罩後的片段）</td></tr>
     <tr><td>守衛對帳</td><td><code>check-guard-refs.mjs</code></td><td>每次跑守衛、新增 🔴 規則時</td><td>🔴 規則沒有標「（守衛：…）」</td></tr>
     <tr><td>導入把關</td><td><code>check-onboard.mjs</code>（在 hd5-onboard）</td><td>導入結束時</td><td>分支沒問、有待問題、舊規則沒有去向、產物被 .gitignore 忽略</td></tr>
     <tr><td>工單閘</td><td><code>workitem/_acceptance-gate.ps1</code></td><td>改「待驗收」、上傳結案報告前</td><td>缺獨立驗收結果、缺站上關卡報告、功能地圖不合格、Pass 沒證據、審過的 diff 裡有疑似密鑰</td></tr>

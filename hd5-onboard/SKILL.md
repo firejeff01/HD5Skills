@@ -136,6 +136,7 @@ node <本 skill>/scripts/check-onboard.mjs --project <專案資料夾>
 - 待建功能清單（功能地圖還沒建的）
 - 檢查結果（照實貼數字）
 - 下一步：commit（由使用者決定）、repo 根入口檔要不要縮、用 `hd5-workflow` 開第一張單
+- 選配建議：問使用者要不要裝 commit 前的密鑰掃描（`install.ps1 -RepoRoot … [-ProjectDir …] -Update -InstallPreCommit`，由使用者自己跑；專案已有別的 pre-commit 時不會覆蓋，會印出要加的那一行）。沒有工單系統的專案特別建議裝，因為沒有工單閘替它再掃一次
 
 不要自己 commit 或 push。之後套件更新用 `install.ps1 -Update`（更新套件的 skills 與工具；代理檔以小節三方比對，見第 7 節）。
 

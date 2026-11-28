@@ -125,7 +125,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <div class="card"><h4>回報不灌水</h4><p>每一條主張都要對得上實際跑過的結果，用「已驗證／已完成未驗證／受阻」三種狀態回報，沒驗到的會直接說。效能數字要說得出瓶頸在哪、排除量錯的可能，才算數。</p></div>
     <div class="card"><h4>先想好程式的形狀</h4><p>SA 設計時先定資料形狀、外部輸入在哪裡檢查、重跑會不會出錯，重要的決定列 2～3 個方案並排給你選。實作先刪再加、遷移完不留舊 API，審查者也會看這些。</p></div>
     <div class="card"><h4>上線後的錯也算帳</h4><p>正式環境才發現的缺陷，會記回當初交付它的案子，跟驗收退回一起統計。哪一關一直漏，數字會說話。</p></div>
-    <div class="card"><h4>密碼不會跟著程式出去</h4><p>送審前掃描新增的程式有沒有寫死密碼、金鑰、權杖，也附上套件弱點掃描結果，有問題先修才送審；改工單成「待驗收」前，工單閘會對審過的程式自動再掃一次。</p></div>
+    <div class="card"><h4>密碼不會跟著程式出去</h4><p>送審前掃描新增的程式有沒有寫死密碼、金鑰、權杖，也附上套件弱點掃描結果，有問題先修才送審；改工單成「待驗收」前，工單閘會對審過的程式自動再掃一次；導入時可以選裝 commit 前的掃描，寫死的密碼連 commit 都進不去。</p></div>
     <div class="card"><h4>同一個錯不犯第二次</h4><p>錯第二次就做成會擋人的檢查。每條 🔴 紅燈規則都要標明是由哪個守衛在擋，對帳工具會檢查。</p></div>
     <div class="card"><h4>換技術也能用</h4><p>.NET、Node、Python、前後端分離或單一層都適用。工具一律讀 <code>.claude/workflow.json</code>，不寫死資料夾和副檔名。</p></div>
   </div>
@@ -281,6 +281,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
   <h2><span class="no">08</span>之後怎麼更新套件</h2>
   <p>母版出新版時，在已經導入過的專案跑：</p>
 <pre><code>&amp; ...\HD5Skills\install.ps1 -RepoRoot D:\work\MyRepo [-ProjectDir src\MyApp] -Update</code></pre>
+  <p>想在每次 commit 前就擋下寫死的密碼、金鑰，加 <code>-InstallPreCommit</code>（選配；已經有別的 pre-commit 不會覆蓋，會告訴你要加哪一行）。沒有工單系統的專案特別建議裝。</p>
   <div class="grid">
     <div class="card"><h4>會更新</h4><p><code>hd5-*</code> skills（Claude 和 Codex 兩份）、<code>AI_Service/hd5-tools/</code> 底下的工具。有用 Azure DevOps 時，工單工具也一起更新。</p></div>
     <div class="card"><h4>代理檔逐節比對</h4><p><code>.claude/agents/</code> 以小節為單位比對三份：上次同步的範本、新範本、你現在的檔。你沒改過的節自動換新版，範本新加的節自動補上，「本專案技術架構重點」永遠不動。</p></div>

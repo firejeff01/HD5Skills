@@ -207,6 +207,26 @@ Check '沒有基準：缺的節補上、內容不同的列衝突、保留 CRLF' 
 $x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-AcceptAgents', 'all', '-SkipTests')
 Check '-AcceptAgents 沒帶 -Update ⇒ 報錯' ($x.Code -ne 0 -and $x.Out -match '只能跟 -Update 一起用')
 
+Write-Host '--- 選配：pre-commit 密鑰掃描（-InstallPreCommit，2026-11-28）---'
+$hookF = Join-Path $r '.git\hooks\pre-commit'
+Check '沒帶 -InstallPreCommit ⇒ 不裝 hook' (-not (Test-Path $hookF))
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-InstallPreCommit', '-SkipTests')
+Check '-Update -InstallPreCommit ⇒ 裝好 hook，工具路徑含專案資料夾前綴' ($x.Code -eq 0 -and $x.Out -match 'pre-commit 密鑰掃描：已安裝' -and [IO.File]::ReadAllText($hookF) -match 'TOOL="app/AI_Service/hd5-tools/check-secrets\.mjs"' -and [IO.File]::ReadAllText($hookF) -notmatch "`r")
+$gitc = { param([string[]]$a) $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; try { $o = (& git -C $r @a 2>&1 | Out-String); [pscustomobject]@{ Code = $LASTEXITCODE; Out = $o } } finally { $ErrorActionPreference = $eap } }
+[IO.File]::WriteAllText((Join-Path $r 'secret.cfg'), ("conn=Server=db;" + 'Pass' + "word=RealOne42;`n"), [Text.UTF8Encoding]::new($false))
+$null = & $gitc @('add', 'secret.cfg'); $c = & $gitc @('commit', '-m', 'add secret')
+Check '🔴 hook 擋下含密鑰的 commit（不印原文）' ($c.Code -ne 0 -and $c.Out -match '疑似密鑰' -and $c.Out -notmatch 'RealOne42' -and ((& $gitc @('log', '--oneline', '-1')).Out -notmatch 'add secret'))
+$null = & $gitc @('reset', '-q', 'secret.cfg'); Remove-Item -LiteralPath (Join-Path $r 'secret.cfg')
+[IO.File]::WriteAllText((Join-Path $r 'ok.txt'), "hello`n", [Text.UTF8Encoding]::new($false))
+$null = & $gitc @('add', 'ok.txt'); $c = & $gitc @('commit', '-q', '-m', 'clean commit')
+Check '乾淨的 commit 照常通過' ($c.Code -eq 0 -and ((& $gitc @('log', '--oneline', '-1')).Out -match 'clean commit'))
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-InstallPreCommit', '-SkipTests')
+Check '重跑：本套件裝的 hook 會更新' ($x.Code -eq 0 -and $x.Out -match 'pre-commit 密鑰掃描：已更新')
+[IO.File]::WriteAllText($hookF, "#!/bin/sh`necho team-hook`n", [Text.UTF8Encoding]::new($false))
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-InstallPreCommit', '-SkipTests')
+Check '已經有別人的 pre-commit ⇒ 不覆蓋、印出怎麼接上' ($x.Code -eq 0 -and [IO.File]::ReadAllText($hookF) -match 'team-hook' -and $x.Out -match '沒有覆蓋' -and $x.Out -match 'check-secrets\.mjs" --staged')
+Remove-Item -LiteralPath $hookF
+
 Write-Host '--- 安裝到 repo 根 ---'
 $r2 = New-Repo
 $x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r2, '-SkipTests')
