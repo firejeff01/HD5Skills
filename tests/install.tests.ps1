@@ -208,7 +208,12 @@ $cur = [IO.File]::ReadAllText($feF); $cur = Set-Sec $cur '程式設計原則' $n
 [IO.File]::WriteAllText($feF, $cur.Replace("`n", "`r`n"), [Text.UTF8Encoding]::new($false))
 $x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-SkipTests')
 $fe = [IO.File]::ReadAllText($feF)
-Check '沒有基準：缺的節補上、內容不同的列衝突、保留 CRLF' ($x.Code -eq 0 -and $fe -match '## 程式設計原則' -and $fe -match '專案自己的不做清單' -and $fe -notmatch '(?<!\r)\n' -and $x.Out -match '待合併衝突 1 節' -and [IO.File]::ReadAllText($rep) -match 'frontend-expert' -and [IO.File]::ReadAllText($rep) -match '沒有基準可比')
+Check '🔴 沒有基準：缺的節不插入、和內容不同的節一起列衝突，專案檔不動（保留 CRLF）' ($x.Code -eq 0 -and $fe -notmatch '## 程式設計原則' -and $fe -match '專案自己的不做清單' -and $fe -notmatch '(?<!\r)\n' -and $x.Out -match '待合併衝突 2 節' -and [IO.File]::ReadAllText($rep) -match 'frontend-expert' -and [IO.File]::ReadAllText($rep) -match '專案沒有這一節')
+Check '🔴 沒有基準又有衝突 ⇒ 不建基準、提醒合併完跑 -AcceptAgents' (-not (Test-Path (Join-Path $ab 'agents/frontend-expert.md')) -and $x.Out -match '先不建基準')
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-SkipTests')
+Check '再跑一次（還是沒有基準）⇒ 照樣不插入、衝突照列' ($x.Code -eq 0 -and [IO.File]::ReadAllText($feF) -notmatch '## 程式設計原則' -and $x.Out -match '待合併衝突 2 節')
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-AcceptAgents', 'frontend-expert', '-SkipTests')
+Check '-AcceptAgents 之後才建基準、衝突清空' ($x.Code -eq 0 -and (Test-Path (Join-Path $ab 'agents/frontend-expert.md')) -and $x.Out -match '待合併衝突 0 節')
 $x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-AcceptAgents', 'all', '-SkipTests')
 Check '-AcceptAgents 沒帶 -Update ⇒ 報錯' ($x.Code -ne 0 -and $x.Out -match '只能跟 -Update 一起用')
 

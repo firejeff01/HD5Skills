@@ -284,7 +284,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
   <p>想在每次 commit 前就擋下寫死的密碼、金鑰，加 <code>-InstallPreCommit</code>（選配；已經有別的 pre-commit 不會覆蓋，會告訴你要加哪一行）。沒有工單系統的專案特別建議裝。</p>
   <div class="grid">
     <div class="card"><h4>會更新</h4><p><code>hd5-*</code> skills（Claude 和 Codex 兩份）、<code>AI_Service/hd5-tools/</code> 底下的工具。有用 Azure DevOps 時，工單工具也一起更新。</p></div>
-    <div class="card"><h4>代理檔逐節比對</h4><p><code>.claude/agents/</code> 以小節為單位比對三份：上次同步的範本、新範本、你現在的檔。你沒改過的節自動換新版，範本新加的節自動補上，「本專案技術架構重點」永遠不動。</p></div>
+    <div class="card"><h4>代理檔逐節比對</h4><p><code>.claude/agents/</code> 以小節為單位比對三份：上次同步的範本、新範本、你現在的檔。你沒改過的節自動換新版，範本新加的節自動補上，「本專案技術架構重點」永遠不動。第一次比對（還沒有基準）時，範本有、你沒有的節不會自動補，會列出來並點名你那邊標題相近的節，避免同一件事寫兩節。</p></div>
     <div class="card"><h4>不會動</h4><p><code>AGENTS.md</code>、<code>CLAUDE.md</code>、<code>workflow.json</code>、<code>settings.json</code>、案子和功能地圖、你的 PAT 檔。</p></div>
     <div class="card"><h4>不會刪</h4><p>套件已經不含的舊檔只會列出來，由你確認要不要刪。</p></div>
   </div>
