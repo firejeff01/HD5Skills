@@ -122,8 +122,10 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <div class="card"><h4>先紅再綠</h4><p>QA 先交一份會失敗的測試，實作讓它轉綠，之後再故意改壞程式，確認測試抓得到。看不到紅燈的測試不算數。</p></div>
     <div class="card"><h4>像使用者一樣驗</h4><p>每個功能都有一份「功能地圖」，寫清楚從哪裡進去、按什麼、成功長怎樣。驗收要實際操作到最終結果，並留下證據。</p></div>
     <div class="card"><h4>第三方把關</h4><p>開發完成後，交給沒參與開發的 Codex 或全新的子代理唯讀審查，只修會擋人的問題，不無限輪迴。</p></div>
-    <div class="card"><h4>回報不灌水</h4><p>每一條主張都要對得上實際跑過的結果，用「已驗證／已完成未驗證／受阻」三種狀態回報，沒驗到的會直接說。</p></div>
+    <div class="card"><h4>回報不灌水</h4><p>每一條主張都要對得上實際跑過的結果，用「已驗證／已完成未驗證／受阻」三種狀態回報，沒驗到的會直接說。效能數字要說得出瓶頸在哪、排除量錯的可能，才算數。</p></div>
     <div class="card"><h4>先想好程式的形狀</h4><p>SA 設計時先定資料形狀、外部輸入在哪裡檢查、重跑會不會出錯，重要的決定列 2～3 個方案並排給你選。實作先刪再加、遷移完不留舊 API，審查者也會看這些。</p></div>
+    <div class="card"><h4>上線後的錯也算帳</h4><p>正式環境才發現的缺陷，會記回當初交付它的案子，跟驗收退回一起統計。哪一關一直漏，數字會說話。</p></div>
+    <div class="card"><h4>密碼不會跟著程式出去</h4><p>送審前自動掃描新增的程式有沒有寫死密碼、金鑰、權杖，也附上套件弱點掃描結果，有問題先修才送審。</p></div>
     <div class="card"><h4>同一個錯不犯第二次</h4><p>錯第二次就做成會擋人的檢查。每條 🔴 紅燈規則都要標明是由哪個守衛在擋，對帳工具會檢查。</p></div>
     <div class="card"><h4>換技術也能用</h4><p>.NET、Node、Python、前後端分離或單一層都適用。工具一律讀 <code>.claude/workflow.json</code>，不寫死資料夾和副檔名。</p></div>
   </div>
@@ -213,6 +215,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <tbody>
       <tr><td>開一張新案子</td><td><span class="say">幫我處理這張工單 &lt;網址&gt;</span><span class="say">我要做一個…功能</span></td><td>讀工單建案、判定路線、照路線派角色</td></tr>
       <tr><td>修一個小 bug</td><td><span class="say">這個按鈕按了沒反應，幫我修</span></td><td>走「小問題」路線：先派 SA 盤查原因和同類位置，再派實作</td></tr>
+      <tr><td>正式環境出 bug</td><td><span class="say">正式站這個功能壞了，是 #123 做的</span></td><td>一樣走小問題路線，SA 會標「逃逸：是，來源 #123」；結案時記回 #123 的退回總帳，看得出是哪一關漏掉</td></tr>
       <tr><td>需求還很模糊</td><td><span class="say">grill 我</span><span class="say">質詢這份設計</span></td><td>把待決事項攤成決策樹，附建議答案一輪一輪問到全部拍板</td></tr>
       <tr><td>實際點點看功能</td><td><span class="say">實際驗一下這個功能</span></td><td>照功能地圖開系統、操作到最終結果、截圖存證</td></tr>
       <tr><td>開發完要審查</td><td><span class="say">送獨立驗收</span></td><td>交給沒參與開發的第三方唯讀審查，總結「通過／不通過／受阻」</td></tr>
@@ -239,8 +242,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
   <h3>一張案子從頭到尾</h3>
   <div class="flow">
     <div class="stage"><div class="who">起點<b>主對話</b></div><div class="what"><p>讀工單或需求、建案資料夾、判定路線和高風險。</p><span class="you">你：確認路線</span></div></div>
-    <div class="stage"><div class="who">需求<b>PM</b></div><div class="what"><p>分析需求、寫驗收條件，接著自動進質詢輪，把沒講清楚的地方問到拍板。</p><span class="you">你：回答質詢題</span></div></div>
-    <div class="stage"><div class="who">設計<b>SA</b></div><div class="what"><p>掃描專案、做技術設計，同樣自動進質詢輪。設計質詢多一個「設計形狀」分支：資料形狀、領域規則放哪、外部輸入在哪裡檢查、重跑會不會出錯、有沒有共用狀態、要重新設計還是接上去；重要的決定列 2～3 個方案並排比較。高風險案子接著跑對抗輪。</p><span class="gate">質詢閘：派 SA／實作／QA 前檢查</span></div></div>
+    <div class="stage"><div class="who">需求<b>PM</b></div><div class="what"><p>分析需求、寫驗收條件，接著自動進質詢輪，把沒講清楚的地方問到拍板。體驗優先：除了正常路徑，也寫出載入中、沒資料、失敗時使用者看到什麼；功能太多又趕時，會問你先做哪幾項、每項做到多完整。</p><span class="you">你：回答質詢題</span></div></div>
+    <div class="stage"><div class="who">設計<b>SA</b></div><div class="what"><p>掃描專案、做技術設計，同樣自動進質詢輪。設計質詢多一個「設計形狀」分支：資料形狀、領域規則放哪、外部輸入在哪裡檢查、重跑會不會出錯、有沒有共用狀態、要重新設計還是接上去；重要的決定列 2～3 個方案並排比較（SA 紀錄沒有這一節，派實作前質詢閘會印警告）。高風險案子接著跑對抗輪。</p><span class="gate">質詢閘：派 SA／實作／QA 前檢查</span></div></div>
     <div class="stage"><div class="who">實作<b>實作代理</b></div><div class="what"><p>QA 先交一份會失敗的測試 → 實作讓它轉綠 → 重構 → 用 mutation 確認測試抓得到錯。修 bug 前先列出所有同類的位置。寫程式照代理檔的「程式設計原則」：先刪再加、檢查放在系統邊界、加防護不等於修好、遷移完同一波刪掉舊 API。每完成一條驗收條件，就照功能地圖自己驗一次。</p><span class="gate">主對話改檔 hook：主對話不准直接改產品程式</span><span class="gate">功能地圖檢查</span></div></div>
     <div class="stage"><div class="who">測試<b>QA</b></div><div class="what"><p>對照每個情境讀測試程式、出測試報告、檢查資安。</p></div></div>
     <div class="stage"><div class="who">審查<b>第三方</b></div><div class="what"><p>沒參與開發的 Codex 或全新子代理唯讀審查整案，除了驗收項目和證據，也看設計品質（防護有沒有蓋住根本原因、舊 API 或相容層有沒有留著）。只修 P0／P1，P2 以下列為已知限制。</p><span class="gate">獨立驗收：通過才能合併</span></div></div>

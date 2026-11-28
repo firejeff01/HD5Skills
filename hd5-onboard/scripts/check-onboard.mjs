@@ -131,6 +131,8 @@ export function check(proj) {
     if (ph.length) errors.push(`AGENTS.md 還有沒填的佔位符：${ph.slice(0, 6).join('、')}${ph.length > 6 ? '…' : ''}`)
     const todo = (ag.match(/🟨\s*待補/g) || []).length
     if (todo) warns.push(`AGENTS.md 有 ${todo} 處 🟨 待補（掃描推不出來、使用者還沒回答）`)
+    // 資安（2026-11-28）：要寫相依套件弱點掃描怎麼跑（獨立驗收委託附結果）；只警告
+    if (!/相依套件弱點掃描/.test(ag)) warns.push('AGENTS.md 沒寫「相依套件弱點掃描」：依套件管理工具寫指令（npm audit、dotnet list package --vulnerable、pip-audit…），真的沒有第三方套件寫「無（理由）」（hd5-onboard 第 4 步；範本「建置、測試與執行指令」有這一行）')
     // Codex 沒有子代理定義：擔任 pm／sa／實作／qa 時要讀 .claude/agents/<角色>.md 本文（11-23 導入 IMOCore 拍板）
     if (!/\.claude\/agents/.test(ag)) warns.push('AGENTS.md 沒提到 `.claude/agents`：要寫明「Codex 擔任某角色時，完整讀 .claude/agents/<角色>.md 本文照做（忽略 frontmatter 的 tools／model）」（範本「AI 協作流程」有這一條）')
   }
@@ -333,7 +335,9 @@ export function selftest(check = checkImpl) {   // 可注入別版 check：拿�
   const tplAg = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'templates', 'AGENTS.md.tpl'), 'utf8')
   w('AGENTS.md', tplAg.replace(/\{\{[^}]+\}\}/g, '（測試）'))
   ok('AGENTS.md 範本照填 ⇒ 不出 Codex 角色警告（範本有那一條）', !check(t).warns.some(x => /Codex 擔任某角色/.test(x)))
+  ok('AGENTS.md 範本照填 ⇒ 不出弱點掃描警告（範本有那一行）', !check(t).warns.some(x => /相依套件弱點掃描/.test(x)))
   w('AGENTS.md', `# AGENTS\n${agents}`)
+  ok('AGENTS.md 沒寫相依套件弱點掃描 ⇒ 警告（不擋）', check(t).errors.length === 0 && check(t).warns.some(x => /相依套件弱點掃描/.test(x)))
   // ── .gitignore：導入產物被忽略 ⇒ 擋（11-23 導入 IMOCore 實例）──
   const g = (cwd, ...a) => execFileSync('git', ['-C', cwd, ...a], { stdio: ['ignore', 'pipe', 'ignore'] })
   ok('（底）不是 git repo ⇒ 不檢查 .gitignore、合格', check(t).errors.length === 0)

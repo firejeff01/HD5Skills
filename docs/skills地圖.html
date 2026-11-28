@@ -160,7 +160,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <dt>怎麼叫</dt><dd><span class="say">grill 我</span><span class="say">質詢這份設計</span></dd>
     <dt>產出</dt><dd><code>&lt;角色目錄&gt;/grill-{主題}.md</code>（拍板紀錄，效力等同需求答覆）；可沉澱 <code>CONTEXT.md</code> 詞彙表、<code>docs/adr/</code></dd>
     <dt>重點</dt><dd>八個標準分支，外部系統案另加第九分支；SA 另加第十分支「設計形狀」：資料形狀、領域規則放哪、邊界、冪等、共用狀態、重新設計還是接上去，重要決定列 2～3 個方案並排比較</dd>
-    <dt>把關</dt><dd>質詢閘 <code>validate-grill-gate.ps1</code>：質詢紀錄沒收斂，就不准派下一個角色</dd></dl></article>
+    <dt>把關</dt><dd>質詢閘 <code>validate-grill-gate.ps1</code>：質詢紀錄沒收斂，就不准派下一個角色；SA 的紀錄沒有「設計形狀」小節只警告、不擋</dd></dl></article>
 
   <article class="sk p1" id="hd5-no-hallucination"><div class="head"><h3>hd5-no-hallucination</h3><span class="tag">全程</span><span class="tag auto">自動</span></div>
     <p class="one">文件沒定義的事不腦補，改列問題清單。格式固定，每題附建議答案，跨輪用同一套 Q 編號。</p>
@@ -176,7 +176,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <dt>重點</dt><dd>實作不准改 QA 的測試；跑之前先確認測試母體真的收得到東西（少跑不會報錯）</dd></dl></article>
 
   <article class="sk p2" id="hd5-verify"><div class="head"><h3>hd5-verify</h3><span class="tag">全程</span><span class="tag auto">自動</span></div>
-    <p class="one">像使用者一樣驗證：照功能地圖把系統開起來，走真實使用者的路徑操作到最終結果，留證據、清理。也規定回報的寫法。</p>
+    <p class="one">像使用者一樣驗證：照功能地圖把系統開起來，走真實使用者的路徑操作到最終結果，留證據、清理。也規定回報的寫法；效能類數字要先說出瓶頸、排除量到別的東西，才能回報。</p>
     <dl><dt>誰用</dt><dd>所有角色</dd>
     <dt>何時</dt><dd>開工前、每完成一條驗收條件、獨立驗收核對證據、站上關卡、回報進度時</dd>
     <dt>產出</dt><dd><code>AI_Service/verify/features/&lt;編號&gt;.md</code>（功能地圖）、證據檔</dd>
@@ -187,7 +187,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <dl><dt>誰用</dt><dd>主對話寫委託；有 Codex 用 Codex，沒有就派全新的 Claude 子代理（不能 fork）</dd>
     <dt>怎麼叫</dt><dd><span class="say">送獨立驗收</span></dd>
     <dt>產出</dt><dd><code>qa/獨立驗收委託_R{n}.md</code>、<code>qa/{Codex|Claude}驗收結果_R{n}.md</code></dd>
-    <dt>規則</dt><dd>委託只給事實、不給結論。總結只有三種：通過／不通過（P0 n／P1 n／P2 n）／受阻（缺 X）。只修 P1；受阻補齊後重送 R{n}b。除了驗收項目和證據，也審設計品質（防護是否蓋住根因、規則是否散成條件判斷、舊 API 有沒有留著），通常列 P2</dd></dl></article>
+    <dt>規則</dt><dd>委託只給事實、不給結論。總結只有三種：通過／不通過（P0 n／P1 n／P2 n）／受阻（缺 X）。只修 P1；受阻補齊後重送 R{n}b。除了驗收項目和證據，也審設計品質（防護是否蓋住根因、規則是否散成條件判斷、舊 API 有沒有留著），通常列 P2</dd>
+    <dt>資安</dt><dd>寫委託檔前先跑密鑰掃描 <code>check-secrets.mjs --diff</code>，加上相依套件弱點掃描，結果附在委託檔；有發現列 P0，不帶著密鑰送審</dd></dl></article>
 
   <article class="sk p3" id="hd5-onsite-gate"><div class="head"><h3>hd5-onsite-gate</h3><span class="tag">驗收</span><span class="tag auto">自動</span></div>
     <p class="one">站上關卡：部署到測試環境後、通知需求方之前，先確認站上跑的是這一版，再逐條操作到最終結果。</p>
@@ -201,7 +202,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <dl><dt>誰用</dt><dd>主對話；QA 和站上關卡都通過後產出</dd>
     <dt>怎麼叫</dt><dd><span class="say">寫結案報告</span><span class="say">交接</span></dd>
     <dt>產出</dt><dd><code>AI_Service/spec/&lt;案名&gt;/ai-case-report.md</code>；有工單系統時掛到來源工單</dd>
-    <dt>8 節</dt><dd>需求一句話、實際交付的驗收條件、改動範圍、關鍵裁定、測試與驗收結果、未盡事項、引用、給下一張工單的時效驗證</dd></dl></article>
+    <dt>8 節</dt><dd>需求一句話、實際交付的驗收條件、改動範圍、關鍵裁定、測試與驗收結果、未盡事項、引用、給下一張工單的時效驗證</dd>
+    <dt>退回總帳</dt><dd>驗收退回和上線後才發現的缺陷（輪次寫「上線」、記回來源案）都記進 <code>AI_Service/spec/rework-ledger.md</code>，程式寫法類第一次就要有程式守衛</dd></dl></article>
 
   <article class="sk p5" id="hd5-architecture"><div class="head"><h3>hd5-architecture</h3><span class="tag">選配</span><span class="tag user">只有你能叫</span></div>
     <p class="one">架構健檢：從 git 熱點找出淺模組和架構摩擦點，做成候選卡片報告。你選定候選項後，再用質詢輪深挖到可以動工。</p>
@@ -217,7 +219,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
   <thead><tr><th>角色</th><th>代理</th><th>做什麼</th><th>主要用到的 skill</th></tr></thead>
   <tbody>
     <tr><td>主對話</td><td>（你正在對話的那個 AI）</td><td>建案、判路線、派角色、把待決事項一題一題問你、合併、站上關卡、結案。<strong>不直接改產品程式</strong>；大量讀取交給子代理，只收摘要</td><td>workflow、workitem、review、onsite-gate、case-report</td></tr>
-    <tr><td>PM</td><td><code>pm-expert</code></td><td>需求分析、驗收條件、質詢輪</td><td>grill、spec-html、no-hallucination</td></tr>
+    <tr><td>PM</td><td><code>pm-expert</code></td><td>需求分析、驗收條件、質詢輪；體驗優先：寫出載入中／沒資料／失敗時的狀態，範圍太大時請 PO 決定先做哪幾項</td><td>grill、spec-html、no-hallucination</td></tr>
     <tr><td>SA</td><td><code>sa-expert</code></td><td>掃描專案、技術設計；小問題路線改做盤查，寫 <code>sa/bug-analysis.md</code>；設計質詢含「設計形狀」分支</td><td>grill、no-hallucination、verify</td></tr>
     <tr><td>實作</td><td><code>workflow.json</code> 的 implementers（預設 <code>backend-expert</code>／<code>frontend-expert</code>）</td><td>TDD 加驗紅；修之前先列出同類位置；照代理檔的「程式設計原則」寫（先刪再加、檢查放邊界、不留舊 API）</td><td>tdd、verify</td></tr>
     <tr><td>QA</td><td><code>qa-expert</code></td><td>實作前先交測試計畫與會失敗的測試（Red）；實作後對照每個情境讀測試程式、測試報告、資安（順序：QA → 實作 → QA）</td><td>tdd、verify</td></tr>
@@ -234,6 +236,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <tr><td>派發 hook</td><td><code>hooks/grill-gate.ps1</code></td><td>Claude 每次派子代理</td><td>prompt 指到某個案子時，自動呼叫質詢閘；放行也會回一行訊息（看不到＝hook 沒載入）</td></tr>
     <tr><td>主對話改檔 hook</td><td><code>hooks/main-edit-guard.ps1</code></td><td>Claude 主對話每次改檔</td><td>工作分支上有進行中的案子時，主對話改產品程式就擋，並建議該派誰（例外要你同意並寫進 spec_001）</td></tr>
     <tr><td>功能地圖</td><td><code>verify-map-check.ps1</code></td><td>開工、站上關卡、工單閘</td><td>地圖有佔位符、驗收項目對不到功能編號、Pass 沒證據</td></tr>
+    <tr><td>退回總帳</td><td><code>check-rework-ledger.mjs</code></td><td>改待驗收、驗收完成、上傳結案報告（工單閘自動跑）</td><td>退回沒記進 rework-log、5.1 和總帳列數對不上、小問題寫了「逃逸：是」卻沒在總帳記「上線」那一列</td></tr>
+    <tr><td>密鑰掃描</td><td><code>check-secrets.mjs</code></td><td>送獨立驗收前</td><td>diff 新增的行裡有私鑰、雲端金鑰、權杖、寫死的密碼或連線字串密碼（只印遮罩後的片段）</td></tr>
     <tr><td>守衛對帳</td><td><code>check-guard-refs.mjs</code></td><td>每次跑守衛、新增 🔴 規則時</td><td>🔴 規則沒有標「（守衛：…）」</td></tr>
     <tr><td>導入把關</td><td><code>check-onboard.mjs</code>（在 hd5-onboard）</td><td>導入結束時</td><td>分支沒問、有待問題、舊規則沒有去向、產物被 .gitignore 忽略</td></tr>
     <tr><td>工單閘</td><td><code>workitem/_acceptance-gate.ps1</code></td><td>改「待驗收」、上傳結案報告前</td><td>缺獨立驗收結果、缺站上關卡報告、功能地圖不合格、Pass 沒證據</td></tr>

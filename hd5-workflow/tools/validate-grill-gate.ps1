@@ -31,6 +31,9 @@
   1d. 驗收回合（-Role 實作角色|qa；-Skip 時一起跳過）：qa/rework-log.md 有處理類別＝新規則的輪次 R{k} ⇒
      pm/ 或 sa/ 的 grill-*.md 要有標題含「驗收回合」與 R{k} 的小節，內有已拍板／已查證／已轉單且沒有待拍板行（同 exit 12 判定）
      ⇒ 否則警告（不擋）。依據：#2164 R3／R4 新規則照自己理解做，又退一輪。
+  1f. 逃逸（2026-11-28，路線＝小問題，-Role 實作角色|qa）：sa/bug-analysis*.md 要寫「逃逸：是，來源 #NNN」或「逃逸：否（理由）」⇒ 否則警告（不擋）。
+  1e. 設計形狀（2026-11-28，路線＝四角色／PM 端已完成，-Role 實作角色|qa；-Skip 時一起跳過）：sa/grill-*.md 要有標題含「設計形狀」的小節，
+     內有已拍板／已查證／已轉單或 N/A ⇒ 否則警告（不擋）。依據：hd5-grill 第三節第十分支只寫在 skill，子代理很少讀 skills。
   2. 功能地圖閘（2026-11-22，僅 -Role 實作角色|qa）：
      - 本案動到的功能要標成 `@功能:<編號>`，可寫在：sa/*.feature、sa/*.md（小問題路線的 bug-analysis）、
        case_spec_content/spec_*.md、pg/*.md。
@@ -45,7 +48,7 @@
   & ./validate-grill-gate.ps1 -Role backend -CasePath AI_Service/spec/<舊案> -SkipRoute "11-23 前已進 PG" -Skip
   exit 碼：0 通過｜1 角色不認得｜2～4 質詢紀錄｜5～7 功能地圖｜8 沒寫路線｜9 有路線又 -Skip｜10 小問題缺 SA 分析｜
            11 沒標高風險或高風險缺對抗輪｜12 grill 紀錄還有待拍板題｜13 PM 問卷沒有回收答覆
-           警告（不改 exit 碼，stdout 印「grill-gate 警告：…」）：沒寫外部系統｜外部系統＝有但樣本表缺或不齊｜新規則退回缺驗收回合質詢
+           警告（不改 exit 碼，stdout 印「grill-gate 警告：…」）：沒寫外部系統｜外部系統＝有但樣本表缺或不齊｜新規則退回缺驗收回合質詢｜SA 缺設計形狀小節｜小問題沒寫逃逸
 #>
 [CmdletBinding()]
 param(
@@ -205,6 +208,13 @@ if ($Skip) {
         exit 10
     }
     $grillNote = "upstream=sa/$($ok.Name)"
+    # 逃逸（2026-11-28，只警告）：上線後才發現的缺陷要記回來源案（退回總帳 輪次＝上線），沒寫就看不出哪一關漏掉
+    $escM = [regex]::Match((Get-Content -Raw -LiteralPath $ok.FullName -Encoding UTF8), '逃逸\**\s*[:：]\s*\**\s*(是|否)([^\r\n]*)')
+    if (-not $escM.Success) {
+        $gateWarnings += "逃逸：sa/$($ok.Name) 沒寫「逃逸：是，來源 #NNN（該被哪一關抓到）」或「逃逸：否（理由）」。已上線功能的 bug 要記回原本的案子，退回總帳才看得出哪一關漏掉（sa-expert.md「小問題模式」第 3 條）"
+    } elseif ($escM.Groups[1].Value -eq '是' -and $escM.Groups[2].Value -notmatch '#\s*\d+') {
+        $gateWarnings += "逃逸：sa/$($ok.Name) 寫了「逃逸：是」但沒寫來源案號，寫成「逃逸：是，來源 #NNN」（結案時 check-rework-ledger.mjs 會要求）"
+    } else { $grillNote += " escape=$(if ($escM.Groups[1].Value -eq '是') { 'yes' } else { 'no' })" }
 } else {
     $upstream = if ($Role -eq 'sa') { 'pm' } else { 'sa' }
     $upstreamPath = Join-Path $resolvedCase $upstream
@@ -330,6 +340,31 @@ if ($isDownstream -and -not $Skip) {
             }
             $grillNote += " rework-rules=$(($ruleRounds | ForEach-Object { "R$_" }) -join ',')"
         }
+    }
+}
+
+# ── 1e. 設計形狀（四角色／PM 端已完成，派實作／QA 前；-Skip 時一起跳過；2026-11-28）───────
+# SA 設計質詢的第十分支（hd5-grill 第三節第 1 條）：sa/grill-*.md 要有標題含「設計形狀」的小節，
+# 小節內至少一個已拍板／已查證／已轉單或「N/A」。只警告不擋：寫得好不好是內容判斷，擋了只會換來一個空殼小節。
+if ($isDownstream -and -not $Skip -and $route -in @('四角色', 'PM端已完成')) {
+    $shapeOk = $false; $shapeBad = @()
+    foreach ($g in @(Get-ChildItem -LiteralPath (Join-Path $resolvedCase 'sa') -Filter 'grill-*.md' -File -ErrorAction SilentlyContinue)) {
+        $gl = @(Get-Content -LiteralPath $g.FullName -Encoding UTF8)
+        for ($i = 0; $i -lt $gl.Count; $i++) {
+            $hm = [regex]::Match($gl[$i], '^(#{1,6})\s+.*設計形狀')
+            if (-not $hm.Success) { continue }
+            $lvl = $hm.Groups[1].Value.Length; $body = @()
+            for ($j = $i + 1; $j -lt $gl.Count; $j++) {
+                $h2 = [regex]::Match($gl[$j], '^(#{1,6})\s'); if ($h2.Success -and $h2.Groups[1].Value.Length -le $lvl) { break }
+                $body += $gl[$j]
+            }
+            if ((($body -join "`n") -match $markerPattern) -or (($body -join "`n") -cmatch 'N/A')) { $shapeOk = $true } else { $shapeBad += "sa/$($g.Name):$($i + 1)" }
+        }
+    }
+    if ($shapeOk) { $grillNote += ' design-shape=ok' }
+    else {
+        $gateWarnings += ("設計形狀：sa/grill-*.md 沒有收斂的「設計形狀」小節" + $(if ($shapeBad.Count) { "（小節裡沒有已拍板／已查證／已轉單或 N/A：$($shapeBad -join '、')）" } else { '' }) +
+            "。SA 設計質詢要回答第十分支：資料形狀、領域規則放哪、邊界、冪等、共用狀態、重新設計還是硬接、2～3 個備選方案；無關的項寫「N/A－理由」（hd5-grill 第三節第 1 條）")
     }
 }
 

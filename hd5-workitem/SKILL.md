@@ -103,7 +103,7 @@ PAT 檔＝一行 PAT（`#` 開頭與空白行略過），範本 `pat.local.examp
 | 時機 | 檢查 |
 |---|---|
 | `workitem-ops.ps1` 改「待驗收」 | 工單歷程 State 變成 `tracker.rejectedStates`（預設「驗收未過」）k 次 ⇒ `qa/rework-log.md` 要記滿 k 輪（`R1`、`R2`…，同輪多列算一輪），否則擋並說「要先記第幾輪退回」；k＝0 且沒有總帳就不跑 |
-| `workitem-ops.ps1` 改 `tracker.doneStates`（預設「驗收完成」）；`upload-case-report.ps1` 上傳時工單目前是、或歷程進過驗收完成 | rework-log 有 m 列 ⇒ `ai-case-report.md` 有 `### 5.1` 且表格 m 列、有「錯誤寫法」欄（m＝0 要寫「退回 0 次」）、總帳 `AI_Service/spec/rework-ledger.md` 有本案案號 m 列；也核對 rework-log 輪數 ≥ 歷程退回次數。改驗收完成沒給 `-CasePath` 在連網前就擋 |
+| `workitem-ops.ps1` 改 `tracker.doneStates`（預設「驗收完成」）；`upload-case-report.ps1` 上傳時工單目前是、或歷程進過驗收完成 | rework-log 有 m 列 ⇒ `ai-case-report.md` 有 `### 5.1` 且表格 m 列、有「錯誤寫法」欄（m＝0 要寫「退回 0 次」）、總帳 `AI_Service/spec/rework-ledger.md` 有本案案號 m 列；也核對 rework-log 輪數 ≥ 歷程退回次數；總帳裡輪次 `上線` 的列（上線後才發現的缺陷）不算進本案列數。本案是小問題、`sa/bug-analysis*.md` 寫了「逃逸：是，來源 #NNN」⇒ 總帳要有 #NNN 輪次 `上線` 那一列（`hd5-workflow`「上線後才發現的缺陷」）。改驗收完成沒給 `-CasePath` 在連網前就擋 |
 | 以上每次 | 總帳存在就一起跑 `--check --gate`：只查格式（8 欄、根因類別、錯誤寫法、對應規則寫法）與 rework-log／5.1／總帳對帳。「程式寫法類要有程式守衛、待辦拖著又再犯」**不在工單閘擋**，只在開發端 `--check`（verify）紅（`hd5-case-report` 第七節） |
 
 預覽照樣只印「正式執行會被擋」；`-SkipAcceptanceGate "<理由>"` 一併略過。
