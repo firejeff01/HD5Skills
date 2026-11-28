@@ -1,6 +1,6 @@
 ---
 name: hd5-onboard
-description: 把 HD5 工作流導入一個 repo（新專案或既有專案、任何程式技術）：掃描專案整理出詳細架構，一題一題問使用者補掃描推不出來的事，產生 Claude 與 Codex 共用的 AGENTS.md（主檔）、引用它的 CLAUDE.md、實作代理（含本專案技術架構重點）、.claude/workflow.json、功能地圖，最後用檢查腳本把關。使用者說「導入工作流」「初始化這個 repo」「幫這個專案產生 CLAUDE.md／AGENTS.md」「掃描專案架構」時使用。
+description: 把 HD5 工作流導入一個 repo（新專案或既有專案、任何程式技術）：掃描專案整理出詳細架構，一題一題問使用者補掃描推不出來的事，產生 Claude 與 Codex 共用的 AGENTS.md（主檔）、引用它的 CLAUDE.md、實作代理（含本專案技術架構重點）、.claude/workflow.json、功能地圖，最後用檢查腳本把關。使用者說「導入工作流」「初始化這個 repo」「幫這個專案產生 CLAUDE.md／AGENTS.md」「掃描專案架構」時使用；套件 -Update 後說「更新代理」時，合併代理檔的衝突小節（第 7 節）。
 ---
 
 # hd5-onboard：把工作流導入這個 repo
@@ -102,7 +102,7 @@ check-onboard 看到清單有表格列就要求去向表、且列數不少於清
      所以 root CLAUDE.md 的那一行文字仍然要寫。檔案要 commit 進版控，新 worktree 才會帶著。
 5. **代理**（`.claude/agents/`）：
    - 專案**已有**同名或對應的代理檔（例 csharp-expert）：**保留原本的本文與 frontmatter（model、tools…）**，新檔以它為底，
-     只補缺的小節；原檔名當別名保留（workflow.json 的 aliases），檔頭描述標「已改名為 xxx」。
+     只補缺的小節（例：實作代理的「程式設計原則」、sa-expert 質詢對象的「設計形狀」分支）；原檔名當別名保留（workflow.json 的 aliases），檔頭描述標「已改名為 xxx」。
      🔴 **「寫入路徑限制」一節要跟範本對齊**：保留舊本文時，範本後來加的寫入權限（例：sa-expert 要能建功能地圖骨架 `<AI_Service>/verify/features/`）
      也要補進去，否則流程要它寫、限制又不准寫（11-24 試跑實例）。check-onboard.mjs 會在 sa-expert 流程提到 verify/features、寫入限制卻沒放行時警告。（守衛：check-onboard.mjs）
    - 沒有的：以 `templates/agents/*-expert.template.md` 為底，`name` 改成 workflow.json 的 agent 名。
@@ -135,4 +135,21 @@ node <本 skill>/scripts/check-onboard.mjs --project <專案資料夾>
 - 檢查結果（照實貼數字）
 - 下一步：commit（由使用者決定）、repo 根入口檔要不要縮、用 `hd5-workflow` 開第一張單
 
-不要自己 commit 或 push。之後套件更新用 `install.ps1 -Update`（只更新套件的 skills 與工具，不動專案的設定與產物）。
+不要自己 commit 或 push。之後套件更新用 `install.ps1 -Update`（更新套件的 skills 與工具；代理檔以小節三方比對，見第 7 節）。
+
+## 7. 更新代理（`install.ps1 -Update` 之後）
+
+使用者說「更新代理」「合併代理範本」，或 `-Update` 印出「代理檔有 N 節要人工合併」時用。
+
+`-Update` 已經把代理檔（`.claude/agents/*.md`）專案沒改過的小節換成新範本、補上範本新加的小節；剩下**專案與範本都改過**
+（或沒有基準可比）的小節列在 `<aiService>/onboard/agent-update.md`，每節附三個版本：基準（上次同步的範本）、專案現在、新範本。
+基準存在 `<aiService>/onboard/agent-base/`（要進版控，新 worktree 才比得到）。
+
+1. 讀 `agent-update.md`，一個代理一個代理處理。每一節判斷：
+   - 範本的改動是**新規則或流程修正**（基準→新範本的差異）⇒ 採用；
+   - 專案的改動是**專案事實或刻意調整**（基準→專案現在的差異，例：改名、專案限制、多加的步驟）⇒ 保留；
+   - 兩者互相矛盾 ⇒ 不自己決定，列成選擇題一題一題問使用者（附建議）。
+2. 合併後的內容寫回該代理檔的那一節；「本專案技術架構重點」不動。給使用者看每一節的前後差異，**使用者同意才寫入**。
+3. 一個代理全部處理完，執行報告開頭那行指令（`install.ps1 … -Update -AcceptAgents <代理名>`）：
+   把該代理的基準設成目前範本，衝突就不再列。不要手改 `agent-base/` 底下的檔。
+4. 跑 `node <本 skill>/scripts/check-onboard.mjs --project <專案資料夾>` 確認代理檔還合格，回報改了哪些節。

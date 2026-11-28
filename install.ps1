@@ -15,16 +15,22 @@
   已存在的檔不覆蓋（-Force 才覆蓋）。不產生 AGENTS.md／CLAUDE.md——那是 hd5-onboard 掃描後的工作。
   裝完跑 hook、質詢閘與功能地圖檢查的測試（子程序關 stdin、限時 180 秒）。
 
+  一般安裝另把「這次新建的代理」所用的範本存一份到 AI_Service/onboard/agent-base/templates/，當之後 -Update 三方比對的基準。
+
   -Update（已導入過的專案更新套件）：只把套件擁有的檔覆蓋成套件版本——.claude/skills/hd5-*、.agents/skills/hd5-*（hd5-workflow／hd5-workitem
   只放 SKILL.md）、<paths.tools>（以專案 workflow.json 為準）底下的工具；工單工具只在專案 tracker.type＝azure-devops（或帶 -Tracker azure-devops）時更新。
-  絕不動 AGENTS.md、CLAUDE.md、.claude/agents、workflow.json、settings.json（不合併 hook，只檢查兩支有沒有掛）、spec／verify／onboard、
+  代理檔（.claude/agents）以「## 小節」三方比對（基準／新範本／專案現在）：專案沒改過的節自動換成新版、範本新加的節自動插入、
+  兩邊都改的列進 <aiService>/onboard/agent-update.md 交給 AI 合併；「本專案技術架構重點」永遠不動（規則見 hd5-onboard/scripts/_agent-merge-lib.ps1）。
+  合併完用 -AcceptAgents <代理名|all> 把該代理的基準設成目前範本。
+  絕不動 AGENTS.md、CLAUDE.md、workflow.json、settings.json（不合併 hook，只檢查兩支有沒有掛）、spec／verify、
   PAT 檔（*.local.*、pat*.txt）與使用者自建檔。不刪檔：套件已不含的檔只列出來請人確認。沒導入過就報錯；不能跟 -Force 一起用。
 
 .EXAMPLE
   & ./install.ps1 -RepoRoot D:\work\MyRepo
   & ./install.ps1 -RepoRoot D:\work\MyRepo -ProjectDir src\MyApp
   & ./install.ps1 -RepoRoot D:\work\MyRepo -Tracker azure-devops   （之後才決定用 Azure DevOps，再跑一次補裝即可）
-  & ./install.ps1 -RepoRoot D:\work\MyRepo -ProjectDir src\MyApp -Update   （已導入過：套件出新版時只更新 skills 與工具）
+  & ./install.ps1 -RepoRoot D:\work\MyRepo -ProjectDir src\MyApp -Update   （已導入過：套件出新版時更新 skills、工具，代理檔三方比對）
+  & ./install.ps1 -RepoRoot D:\work\MyRepo -ProjectDir src\MyApp -Update -AcceptAgents sa-expert   （AI 合併完 sa-expert 的衝突後）
 #>
 [CmdletBinding()]
 param(
@@ -33,11 +39,14 @@ param(
     [ValidateSet('none', 'azure-devops')][string]$Tracker = 'none',
     [switch]$Force,
     [switch]$Update,
+    [string[]]$AcceptAgents = @(),
     [switch]$SkipTests
 )
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 if ($Update -and $Force) { throw '-Update 與 -Force 不能同時用：-Update 只覆蓋套件自己的檔（skills、工具），-Force 會連專案的代理、workflow.json 一起覆蓋' }
+if ($AcceptAgents.Count -and -not $Update) { throw '-AcceptAgents 只能跟 -Update 一起用' }
+$AcceptAgents = @($AcceptAgents | ForEach-Object { $_ -split '[,，\s]+' } | Where-Object { $_ })
 
 $kit = $PSScriptRoot
 $RepoRoot = [IO.Path]::GetFullPath($RepoRoot)
@@ -181,6 +190,76 @@ if ($Update) {
     # 工具（工單工具另外依 tracker）
     Sync-Tree (Join-Path $kit 'hd5-workflow/tools') (Join-Path $proj $toolsRel) @('workitem')
     if ($Tracker -eq 'azure-devops') { Sync-Tree (Join-Path $kit 'hd5-workitem/scripts') (Join-Path $proj "$toolsRel/workitem") }
+
+    # ── 代理檔：以「## 小節」三方比對（11-28 使用者拍板；取代 11-23「-Update 不動 .claude/agents」）──
+    . (Join-Path $kit 'hd5-onboard/scripts/_agent-merge-lib.ps1')
+    $aiRel = if ($wfU.paths.aiService) { ([string]$wfU.paths.aiService -replace '\\', '/').Trim('/') } else { 'AI_Service' }
+    $baseRoot = Join-Path $proj "$aiRel/onboard/agent-base"
+    $tplAgents = Join-Path $kit 'hd5-onboard/templates/agents'
+    $tplByRole = @{ backend = 'backend-expert.template.md'; frontend = 'frontend-expert.template.md' }
+    $pairs = [Collections.Generic.List[object]]::new(); $agentNotes = [Collections.Generic.List[string]]::new()
+    foreach ($n in 'pm-expert', 'sa-expert', 'qa-expert') { $pairs.Add([pscustomobject]@{ Agent = $n; Tpl = "$n.md" }) }
+    foreach ($im in @($wfU.implementers)) {
+        if (-not $im.agent) { continue }
+        $tf = $tplByRole[[string]$im.gateRole]
+        if (-not $tf) { $agentNotes.Add("$($im.agent)：gateRole＝$($im.gateRole) 沒有對應的套件範本，不比對（要更新請對照 backend／frontend 範本手動合併）"); continue }
+        if (@($pairs | Where-Object Agent -eq $im.agent).Count) { continue }
+        $pairs.Add([pscustomobject]@{ Agent = [string]$im.agent; Tpl = $tf })
+    }
+    $readText = { param($f) $by = [IO.File]::ReadAllBytes($f); $bom = $by.Length -ge 3 -and $by[0] -eq 0xEF -and $by[1] -eq 0xBB -and $by[2] -eq 0xBF
+        $s = [Text.UTF8Encoding]::new($false).GetString($by, $(if ($bom) { 3 } else { 0 }), $by.Length - $(if ($bom) { 3 } else { 0 })); [pscustomobject]@{ Text = $s; Bom = $bom; Crlf = $s.Contains("`r`n") } }
+    $writeIfDiff = { param($f, $text, $bom)
+        $enc = [Text.UTF8Encoding]::new($bom)
+        if ((Test-Path -LiteralPath $f) -and (& $readText $f).Text -ceq $text) { return $false }
+        New-Item -ItemType Directory -Force (Split-Path $f -Parent) | Out-Null; [IO.File]::WriteAllText($f, $text, $enc); return $true }
+    $agentConflicts = [Collections.Generic.List[object]]::new(); $agentSum = @{ Updated = 0; Added = 0; Removed = 0 }; $agentChanged = [Collections.Generic.List[string]]::new()
+    foreach ($pr in $pairs) {
+        $af = Join-Path $proj ".claude/agents/$($pr.Agent).md"
+        if (-not (Test-Path -LiteralPath $af)) { $agentNotes.Add("$($pr.Agent)：專案沒有 .claude/agents/$($pr.Agent).md，略過"); continue }
+        $cur = & $readText $af
+        $tplText = [IO.File]::ReadAllText((Join-Path $tplAgents $pr.Tpl)).Replace("`r`n", "`n")
+        $bf = Join-Path $baseRoot "agents/$($pr.Agent).md"; $bt = Join-Path $baseRoot "templates/$($pr.Tpl)"
+        $baseText = if (Test-Path -LiteralPath $bf) { [IO.File]::ReadAllText($bf) } elseif (Test-Path -LiteralPath $bt) { [IO.File]::ReadAllText($bt) } else { $null }
+        $accept = ($AcceptAgents -contains $pr.Agent) -or ($AcceptAgents -contains 'all')
+        $m = Merge-AgentSections -Project $cur.Text -Template $tplText -Base $baseText -Accept:$accept
+        if ($m.Changed) {
+            $outText = if ($cur.Crlf) { $m.Text.Replace("`n", "`r`n") } else { $m.Text }
+            [void](& $writeIfDiff $af $outText $cur.Bom); $agentChanged.Add($pr.Agent)
+            $agentSum.Updated += $m.Updated.Count; $agentSum.Added += $m.Added.Count; $agentSum.Removed += $m.Removed.Count
+            $d = @(); if ($m.Added.Count) { $d += "新增 $($m.Added -join '、')" }; if ($m.Updated.Count) { $d += "更新 $($m.Updated -join '、')" }; if ($m.Removed.Count) { $d += "移除 $($m.Removed -join '、')" }
+            $agentNotes.Add("$($pr.Agent)：$($d -join '；')")
+        }
+        if ($accept) { $agentNotes.Add("$($pr.Agent)：已接受（基準設成目前範本，專案檔不動）") }
+        foreach ($n in $m.Notes) { $agentNotes.Add("$($pr.Agent)：$n") }
+        foreach ($c in $m.Conflicts) { $agentConflicts.Add([pscustomobject]@{ Agent = $pr.Agent; C = $c }) }
+        [void](& $writeIfDiff $bf $m.BaseText $false)
+    }
+    $reportRel = "$aiRel/onboard/agent-update.md"; $reportF = Join-Path $proj $reportRel
+    if ($agentConflicts.Count) {
+        $cmd = "& '$(Join-Path $kit 'install.ps1')' -RepoRoot '$RepoRoot'$(if ($ProjectDir) { " -ProjectDir '$ProjectDir'" }) -Update -AcceptAgents <代理名>"
+        $sb = [Text.StringBuilder]::new()
+        [void]$sb.AppendLine("# 代理檔待合併（install.ps1 -Update 產生，$(Get-Date -Format 'yyyy-MM-dd HH:mm')）")
+        [void]$sb.AppendLine('')
+        [void]$sb.AppendLine('下面每一節，專案與新範本都跟基準不同（或沒有基準可比），-Update 沒有自動改。照 `hd5-onboard`「更新代理」一節合併：')
+        [void]$sb.AppendLine('保留專案自己的事實與調整、採用範本的新規則；給使用者看差異、同意才寫入。某個代理全部合併完後執行：')
+        [void]$sb.AppendLine(''); [void]$sb.AppendLine('```powershell'); [void]$sb.AppendLine($cmd); [void]$sb.AppendLine('```'); [void]$sb.AppendLine('')
+        $i = 0
+        foreach ($g in ($agentConflicts | Group-Object Agent)) {
+            [void]$sb.AppendLine("## $($g.Name)（.claude/agents/$($g.Name).md）"); [void]$sb.AppendLine('')
+            foreach ($x in $g.Group) {
+                $i++; $c = $x.C
+                [void]$sb.AppendLine("### C-$('{0:D2}' -f $i) $($c.Label)：$($c.Reason)"); [void]$sb.AppendLine('')
+                foreach ($v in @(@('基準（上次同步的範本）', $c.Base), @('專案現在', $c.Project), @('新範本', $c.Template))) {
+                    [void]$sb.AppendLine("**$($v[0])**"); [void]$sb.AppendLine('')
+                    [void]$sb.AppendLine('~~~~markdown'); [void]$sb.AppendLine($(if ($v[1]) { $v[1] } else { '（沒有）' })); [void]$sb.AppendLine('~~~~'); [void]$sb.AppendLine('')
+                }
+            }
+        }
+        [void](& $writeIfDiff $reportF ($sb.ToString().Replace("`r`n", "`n")) $false)
+    } elseif (Test-Path -LiteralPath $reportF) {
+        [void](& $writeIfDiff $reportF "# 代理檔待合併`n`n沒有待合併的衝突（install.ps1 -Update，$(Get-Date -Format 'yyyy-MM-dd')）。`n" $false)
+    }
+
     # settings.json：不改，只檢查兩支 hook 有沒有掛
     $stP = Join-Path $proj '.claude/settings.json'; $hookCmds = ''
     if (Test-Path -LiteralPath $stP) { try { $hookCmds = @((Get-Content -Raw -LiteralPath $stP -Encoding UTF8 | ConvertFrom-Json).hooks.PreToolUse.hooks.command) -join "`n" } catch { } }
@@ -204,6 +283,9 @@ if ($Update) {
         Write-Host "  套件已不含、請確認後手動刪（-Update 不刪檔）：$($gone.Count) 個"
         foreach ($g in $gone) { Write-Host "    $g" }
     }
+    Write-Host "  代理：$($agentChanged.Count) 個代理檔有改（新增 $($agentSum.Added) 節、更新 $($agentSum.Updated) 節、移除 $($agentSum.Removed) 節）；待合併衝突 $($agentConflicts.Count) 節"
+    foreach ($n in $agentNotes) { Write-Host "    $n" }
+    if ($agentConflicts.Count) { Write-Warning "代理檔有 $($agentConflicts.Count) 節要人工合併：見 $reportRel（在專案啟動 Claude Code，說「更新代理」）" }
 }
 if (-not $Update) {
     Write-Host "== 安裝 HD5Skills：$RepoRoot（專案資料夾：$(if ($ProjectDir) { $ProjectDir } else { '（repo 根）' })）"
@@ -237,6 +319,14 @@ if (-not $Update) {
     $tpl = Join-Path $kit 'hd5-onboard/templates'
     foreach ($n in 'pm-expert', 'sa-expert', 'qa-expert') { Copy-One (Join-Path $tpl "agents/$n.md") (Join-Path $proj ".claude/agents/$n.md") }
     foreach ($n in 'backend-expert', 'frontend-expert') { Copy-One (Join-Path $tpl "agents/$n.template.md") (Join-Path $proj ".claude/agents/$n.md") }
+    # 三方比對的基準：只記「這次真的從範本建出來」的代理用的範本（已存在而跳過的代理是舊版範本建的，記新版會讓 -Update 誤判成「專案改過」而漏更新）
+    $tplOf = @{ 'pm-expert' = 'pm-expert.md'; 'sa-expert' = 'sa-expert.md'; 'qa-expert' = 'qa-expert.md'; 'backend-expert' = 'backend-expert.template.md'; 'frontend-expert' = 'frontend-expert.template.md' }
+    foreach ($n in $tplOf.Keys) {
+        if ($copied -notcontains (Join-Path $proj ".claude/agents/$n.md")) { continue }
+        $bdst = Join-Path $proj "AI_Service/onboard/agent-base/templates/$($tplOf[$n])"
+        if ((Test-Path -LiteralPath $bdst) -and -not $Force) { continue }
+        New-Item -ItemType Directory -Force (Split-Path $bdst -Parent) | Out-Null; Copy-Item -LiteralPath (Join-Path $tpl "agents/$($tplOf[$n])") -Destination $bdst -Force
+    }
     Copy-One (Join-Path $tpl 'workflow.json.tpl') (Join-Path $proj '.claude/workflow.json')
     if ($Tracker -ne 'none') {
         # 選了工單系統就寫進 workflow.json（工單工具看 tracker.type 決定要不要做事）。
@@ -307,7 +397,7 @@ if (-not $SkipTests) {
 Write-Host ''
 if ($Update) {
     if ($fail) { Write-Host "❌ 有 $fail 項驗證沒過" -ForegroundColor Red; exit 1 }
-    Write-Host '✅ 更新完成（只動套件的 skills 與工具；用 git diff 看改了什麼）' -ForegroundColor Green
+    Write-Host '✅ 更新完成（套件的 skills、工具，與代理檔沒衝突的小節；用 git diff 看改了什麼）' -ForegroundColor Green
     return
 }
 Write-Host '== 下一步'
