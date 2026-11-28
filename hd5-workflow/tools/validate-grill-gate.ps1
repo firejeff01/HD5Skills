@@ -72,6 +72,10 @@ param(
     [string]$VerifyRoot
 )
 
+# stdout 一律 UTF-8（2026-11-28 king_wu 回報：從 Git Bash 用 pwsh -File 跑時，主控台是系統字碼頁 cp950，中文路線值變亂碼；
+# hook 與 Codex 都用 UTF-8 解讀這支的輸出）。不帶 BOM，避免第一行多出 BOM 字元。
+try { [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false } catch { }
+
 $resolvedCase = Resolve-Path -LiteralPath $CasePath -ErrorAction Stop
 
 # ── 角色（通用化 2026-11-23）：實作角色由專案 .claude/workflow.json 決定，不寫死 csharp／vue3 ──
@@ -129,6 +133,14 @@ function Test-PendingLine([string]$line) {
     if ($pm.Count -eq 0) { return $false }
     if ($line -match '已轉單') { return $false }                                       # 轉給非工程角色＝合法終止狀態
     if ($line -match '待拍板\S{0,2}\s*[:：]?\s*(無|0\s*題|0\s*$)') { return $false }      # 「待拍板：無」「待拍板題 0 題」之類的總結行
+    # 表格的統計列（2026-11-28 king_wu 回報）：某格是題數類標籤（待拍板題／題數／項數），下一格是 無／0 ⇒ 總結行。
+    # 只寫「待拍板」的格是某一題的狀態（例 | Q-07 | 待拍板 | 無 |＝這題還沒答），照樣算待拍板。
+    if ($line.TrimStart().StartsWith('|')) {
+        $cells = @($line.Trim().Trim('|') -split '\|' | ForEach-Object { $_.Trim() })
+        for ($i = 0; $i -lt $cells.Count - 1; $i++) {
+            if ($cells[$i] -match '^待拍板(題數?|項數?|數)\s*[:：]?$' -and $cells[$i + 1] -match '^(無|0|0\s*[題項])$') { return $false }
+        }
+    }
     $last = $pm[$pm.Count - 1]
     if ($line.Substring($last.Index + $last.Length) -match '已拍板|已查證') { return $false }   # 同一行後面已收斂（例：建議 A [待確認] → 已拍板 A）
     return $true

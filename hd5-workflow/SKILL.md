@@ -71,7 +71,7 @@ PM → SA →（高風險：對抗輪）→ **QA（測試計畫＋Red）→ 實�
 | 關卡 | 什麼時候 | 工具（`AI_Service/hd5-tools/`） |
 |---|---|---|
 | 質詢閘 | 派 sa／實作／qa 前 | `validate-grill-gate.ps1`：沒寫路線 8、有路線又跳步 9、小問題缺 SA 分析 10、高風險缺對抗輪或沒標高風險 11、質詢紀錄 2～4、功能地圖 5～7、派實作／QA 前 grill 紀錄還有待拍板題 12、PM 端已完成但 `spec_*_r*.html` 沒有對應 answer 13。另印警告（不擋）：沒寫「外部系統：有｜無」、外部系統＝有但 `sa/external-samples.md` 缺或樣本不齊、`qa/rework-log.md` 有「新規則」退回但 grill 沒有收斂完的「驗收回合 R{k}」小節、四角色／PM 端已完成但 `sa/grill-*.md` 沒有收斂的「設計形狀」小節、小問題的 `sa/bug-analysis.md` 沒寫「逃逸：」、rework-log 同一根因連兩輪卻沒有「前提檢查 R{k}：」 |
-| 派發 hook（Claude） | 每次派子代理 | `hooks/grill-gate.ps1`：prompt 指到案子就呼叫質詢閘；放行時也回一行「grill-gate 放行：走哪條路徑、代理、案子、閘 exit 碼」 |
+| 派發 hook（Claude） | 每次派子代理 | `hooks/grill-gate.ps1`：prompt 指到案子就呼叫質詢閘（案子資料夾依序找：prompt 裡的絕對路徑 → 工作目錄推出的專案根 → `git worktree list` 的每個 worktree，案子只在 worktree 裡也找得到）；放行時也回一行「grill-gate 放行：走哪條路徑、代理、案子、閘 exit 碼」 |
 | 主對話改檔 hook（Claude） | 主對話每次 Edit／Write | `hooks/main-edit-guard.ps1`：有進行中案子時，主對話改產品程式就擋（例外：spec_001 寫「主對話直接改：理由（使用者 MM-DD 同意）」）；建議派誰依 workflow.json 的 `roleHints`（例 tests/ 歸 qa-expert）→ 實作代理 `pathHints` → 副檔名；`productCode.excludeDirs` 只比前綴、`**/` 才比任意層 |
 | 功能地圖 | 開工、站上關卡 | `verify-map-check.ps1`：每個功能怎麼到達、怎麼操作、地雷；Pass 要有證據 |
 | 獨立驗收 | 實作與 QA 完成後、合併前 | 結果檔最後一行 `總結：通過｜不通過（P0 n／P1 n／P2 n）｜受阻（缺 X）`；只修 P1（含 P0）；受阻補齊後重送同一輪 R{n}b |

@@ -233,7 +233,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
   <thead><tr><th>關卡</th><th>工具</th><th>什麼時候</th><th>擋什麼</th></tr></thead>
   <tbody>
     <tr><td>質詢閘</td><td><code>validate-grill-gate.ps1</code></td><td>派 SA／實作／QA 前</td><td>沒寫路線、有路線卻跳步、小問題缺 SA 分析、高風險缺對抗輪、質詢紀錄沒收斂或還有待拍板題、PM 問卷沒有回收答覆、功能地圖不合格</td></tr>
-    <tr><td>派發 hook</td><td><code>hooks/grill-gate.ps1</code></td><td>Claude 每次派子代理</td><td>prompt 指到某個案子時，自動呼叫質詢閘；放行也會回一行訊息（看不到＝hook 沒載入）</td></tr>
+    <tr><td>派發 hook</td><td><code>hooks/grill-gate.ps1</code></td><td>Claude 每次派子代理</td><td>prompt 指到某個案子時，自動呼叫質詢閘（案子只在 git worktree 裡也找得到）；放行也會回一行訊息（看不到＝hook 沒載入）</td></tr>
     <tr><td>主對話改檔 hook</td><td><code>hooks/main-edit-guard.ps1</code></td><td>Claude 主對話每次改檔</td><td>工作分支上有進行中的案子時，主對話改產品程式就擋，並建議該派誰（例外要你同意並寫進 spec_001）</td></tr>
     <tr><td>功能地圖</td><td><code>verify-map-check.ps1</code></td><td>開工、站上關卡、工單閘</td><td>地圖有佔位符、驗收項目對不到功能編號、Pass 沒證據</td></tr>
     <tr><td>退回總帳</td><td><code>check-rework-ledger.mjs</code></td><td>改待驗收、驗收完成、上傳結案報告（工單閘自動跑）</td><td>退回沒記進 rework-log、5.1 和總帳列數對不上、小問題寫了「逃逸：是」卻沒在總帳記「上線」那一列</td></tr>

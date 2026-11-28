@@ -94,8 +94,24 @@ $fallbackWhy = 'prompt 沒指到案子'
 if ($caseMatch.Success) {
     $caseName = $caseMatch.Groups[1].Value
     $fallbackWhy = "prompt 指到 $caseName 但找不到該案子資料夾"
-    $caseDir = $projectRoots | ForEach-Object { Join-Path $_ "$aiName/spec/$caseName" } |
-        Where-Object { Test-Path -LiteralPath $_ -PathType Container } | Select-Object -First 1
+    # 找案子資料夾的順序（2026-11-28 king_wu 回報：工作分支用 worktree，案子只在 worktree 裡，session 卻在 repo 根開）：
+    #   1. prompt 裡寫的絕對路徑（…\<AI_Service>\spec\<案名>）；2. hook cwd／payload.cwd 推出的專案根；3. git worktree list 的每個 worktree（含專案資料夾前綴）
+    $caseDirs = @()
+    $absM = [regex]::Match($prompt, '([A-Za-z]:[\\/][^\r\n"''\x60<>|]*?)[\\/]+' + [regex]::Escape($aiName) + '[\\/]+spec[\\/]+' + [regex]::Escape($caseName) + '(?![^\\/\s"''\x60）)>，。、])')
+    if ($absM.Success) { $caseDirs += (Join-Path $absM.Groups[1].Value "$aiName/spec/$caseName") }
+    $caseDirs += @($projectRoots | ForEach-Object { Join-Path $_ "$aiName/spec/$caseName" })
+    $caseDir = $caseDirs | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | Select-Object -First 1
+    if (-not $caseDir) {
+        $wtRoots = @()
+        foreach ($b in @(@($projectRoots) + @((Get-Location).Path, [string]$payload.cwd) | Where-Object { $_ } | Select-Object -Unique)) {
+            $eapW = $ErrorActionPreference; $ErrorActionPreference = 'SilentlyContinue'
+            $wl = @(& git -C $b worktree list --porcelain 2>$null); $ErrorActionPreference = $eapW
+            foreach ($l in $wl) { if ($l -match '^worktree (.+)$') { $w = $Matches[1].Trim(); $wtRoots += $w; if ($projPrefix) { $wtRoots += (Join-Path $w $projPrefix.TrimEnd('/')) } } }
+        }
+        $caseDir = @($wtRoots | Select-Object -Unique | ForEach-Object { Join-Path $_ "$aiName/spec/$caseName" }) |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Container } | Select-Object -First 1
+        if (-not $caseDir -and $wtRoots.Count) { $fallbackWhy += "（也找過 $(@($wtRoots | Select-Object -Unique).Count) 個 git worktree）" }
+    }
     if ($caseDir) {
         # 質詢閘位置：案子所屬專案的 workflow.json paths.tools → 本 hook 的上一層（HD5Skills tools）→ IMOCore 舊位置
         $gate = $null
