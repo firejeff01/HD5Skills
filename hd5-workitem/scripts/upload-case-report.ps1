@@ -111,8 +111,10 @@ if ([string]::IsNullOrWhiteSpace($CasePath) -and -not [string]::IsNullOrWhiteSpa
 }$vlib = Resolve-HD5VerifyMapLib -ToolsDir $ToolsDir -Context $ctx -ScriptRoot $PSScriptRoot
 if ($vlib.Path -and [string]::IsNullOrWhiteSpace($SkipAcceptanceGate)) { . $vlib.Path }
 if ([string]::IsNullOrWhiteSpace($VerifyRoot) -and $ctx.ProjectDir) { $VerifyRoot = Join-Path $ctx.ProjectDir (Join-Path $ctx.AiService 'verify') }
+$secTool = Resolve-HD5ToolFile -Name 'check-secrets.mjs' -ToolsDir $ToolsDir -Context $ctx -ScriptRoot $PSScriptRoot
 $gateOk = Assert-HD5AcceptanceGate -CasePath $CasePath -SkipReason $SkipAcceptanceGate -Preview:$isPreview -PreviewToleratesMissingCase `
-    -ActionLabel '上傳結案報告' -VerifyRoot $VerifyRoot -VerifyLibPath $vlib.Path -VerifyLibSearched $vlib.Searched
+    -ActionLabel '上傳結案報告' -VerifyRoot $VerifyRoot -VerifyLibPath $vlib.Path -VerifyLibSearched $vlib.Searched `
+    -SecretsTool $secTool.Path -SecretsToolSearched $secTool.Searched
 
 # --- 解析工單、認證、讀目標工單 ---------------------------------------------
 $WorkItemUrl = Resolve-DevOpsWorkItemInput -WorkItem $WorkItemUrl -ProjectUrl $ProjectUrl -Context $ctx

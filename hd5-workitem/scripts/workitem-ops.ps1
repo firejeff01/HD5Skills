@@ -95,8 +95,9 @@ if ($Action -eq 'update' -and (Test-DevOpsStateNeedsAcceptanceGate -State $State
     $vlib = Resolve-HD5VerifyMapLib -ToolsDir $ToolsDir -Context $ctx -ScriptRoot $PSScriptRoot
     if ($vlib.Path -and [string]::IsNullOrWhiteSpace($SkipAcceptanceGate)) { . $vlib.Path }
     if ([string]::IsNullOrWhiteSpace($VerifyRoot) -and $ctx.ProjectDir) { $VerifyRoot = Join-Path $ctx.ProjectDir (Join-Path $ctx.AiService 'verify') }
+    $secTool = Resolve-HD5ToolFile -Name 'check-secrets.mjs' -ToolsDir $ToolsDir -Context $ctx -ScriptRoot $PSScriptRoot
     $null = Assert-HD5AcceptanceGate -CasePath $CasePath -SkipReason $SkipAcceptanceGate -Preview:$WhatIfOnly -ActionLabel "改成「$State」" `
-        -VerifyRoot $VerifyRoot -VerifyLibPath $vlib.Path -VerifyLibSearched $vlib.Searched
+        -VerifyRoot $VerifyRoot -VerifyLibPath $vlib.Path -VerifyLibSearched $vlib.Searched -SecretsTool $secTool.Path -SecretsToolSearched $secTool.Searched
 }
 
 # 退回紀錄閘（2026-11-25）：改待驗收＝歷程退回 k 次要記滿 k 輪；改驗收完成＝結案報告 5.1＋退回總帳要齊。

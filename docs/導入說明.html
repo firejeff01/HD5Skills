@@ -125,7 +125,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <div class="card"><h4>回報不灌水</h4><p>每一條主張都要對得上實際跑過的結果，用「已驗證／已完成未驗證／受阻」三種狀態回報，沒驗到的會直接說。效能數字要說得出瓶頸在哪、排除量錯的可能，才算數。</p></div>
     <div class="card"><h4>先想好程式的形狀</h4><p>SA 設計時先定資料形狀、外部輸入在哪裡檢查、重跑會不會出錯，重要的決定列 2～3 個方案並排給你選。實作先刪再加、遷移完不留舊 API，審查者也會看這些。</p></div>
     <div class="card"><h4>上線後的錯也算帳</h4><p>正式環境才發現的缺陷，會記回當初交付它的案子，跟驗收退回一起統計。哪一關一直漏，數字會說話。</p></div>
-    <div class="card"><h4>密碼不會跟著程式出去</h4><p>送審前自動掃描新增的程式有沒有寫死密碼、金鑰、權杖，也附上套件弱點掃描結果，有問題先修才送審。</p></div>
+    <div class="card"><h4>密碼不會跟著程式出去</h4><p>送審前掃描新增的程式有沒有寫死密碼、金鑰、權杖，也附上套件弱點掃描結果，有問題先修才送審；改工單成「待驗收」前，工單閘會對審過的程式自動再掃一次。</p></div>
     <div class="card"><h4>同一個錯不犯第二次</h4><p>錯第二次就做成會擋人的檢查。每條 🔴 紅燈規則都要標明是由哪個守衛在擋，對帳工具會檢查。</p></div>
     <div class="card"><h4>換技術也能用</h4><p>.NET、Node、Python、前後端分離或單一層都適用。工具一律讀 <code>.claude/workflow.json</code>，不寫死資料夾和副檔名。</p></div>
   </div>
@@ -248,7 +248,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <div class="stage"><div class="who">測試<b>QA</b></div><div class="what"><p>對照每個情境讀測試程式、出測試報告、檢查資安。</p></div></div>
     <div class="stage"><div class="who">審查<b>第三方</b></div><div class="what"><p>沒參與開發的 Codex 或全新子代理唯讀審查整案，除了驗收項目和證據，也看設計品質（防護有沒有蓋住根本原因、舊 API 或相容層有沒有留著）。只修 P0／P1，P2 以下列為已知限制。</p><span class="gate">獨立驗收：通過才能合併</span></div></div>
     <div class="stage"><div class="who">上站<b>主對話</b></div><div class="what"><p>合併、部署到測試環境，然後逐條在站上操作到最終結果、留證據。</p><span class="gate">站上關卡：通過才能送驗收</span><span class="you">你：同意 push／部署</span></div></div>
-    <div class="stage"><div class="who">結案<b>主對話</b></div><div class="what"><p>寫結案報告（固定 8 節，給下一張工單參考）。改工單狀態前會自動檢查：獨立驗收過了沒、站上關卡過了沒、每個 Pass 都有證據嗎。</p><span class="gate">工單閘</span><span class="you">你：同意改工單、發通知</span></div></div>
+    <div class="stage"><div class="who">結案<b>主對話</b></div><div class="what"><p>寫結案報告（固定 8 節，給下一張工單參考）。改工單狀態前會自動檢查：獨立驗收過了沒、站上關卡過了沒、每個 Pass 都有證據嗎、審過的程式裡有沒有寫死的密碼或金鑰。</p><span class="gate">工單閘</span><span class="you">你：同意改工單、發通知</span></div></div>
   </div>
   <p class="legend"><span class="gate">紅框</span>是會擋人的程式關卡，<span class="you">綠框</span>是需要你決定的地方。每個關卡的細節見 <a href="skills地圖.html">Skills 地圖</a>。</p>
 </section>

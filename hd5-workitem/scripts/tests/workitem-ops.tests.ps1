@@ -42,7 +42,7 @@ New-Item -ItemType Directory -Path (Join-Path $iso 'tools\workitem') -Force | Ou
 Get-ChildItem -LiteralPath $scripts -File -Force | Copy-Item -Destination (Join-Path $iso 'tools\workitem') -Force
 Copy-Item -LiteralPath $vmLib -Destination (Join-Path $iso 'tools') -Force
 # 退回紀錄閘要用的總帳檢查器（與功能地圖檢查器同一層；它 import check-guard-refs.mjs）
-foreach ($n in 'check-rework-ledger.mjs', 'check-guard-refs.mjs') { $src = Join-Path (Split-Path -Parent $vmLib) $n; if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $iso 'tools') -Force } }
+foreach ($n in 'check-rework-ledger.mjs', 'check-guard-refs.mjs', 'check-secrets.mjs') { $src = Join-Path (Split-Path -Parent $vmLib) $n; if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $iso 'tools') -Force } }
 $scripts = Join-Path $iso 'tools\workitem'
 $vmLib = Join-Path $iso 'tools\_verify-map-lib.ps1'
 $vmDir = Split-Path -Parent $vmLib
@@ -513,6 +513,56 @@ $global:HD5Net = @()
 $r = Run-Ops $doneF
 Check '改驗收完成：5.1 與總帳都齊 ⇒ 寫入' (-not $r.Threw -and @($global:HD5Net | Where-Object { $_.Method -eq 'Patch' }).Count -eq 1)
 
+Write-Host '--- 密鑰掃描閘（2026-11-28）：對獨立驗收委託檔寫的 diff 範圍跑 check-secrets.mjs ---'
+$secTool = Join-Path $vmDir 'check-secrets.mjs'
+$sg = { param($c, $tool = $secTool) Test-HD5SecretsGate -CasePath $c -SecretsTool $tool }
+$r = & $sg $cF
+Check '案子不在 git repo ⇒ 略過（通過、明細寫略過）' ($r.Passed -and ($r.Details -join ' ') -match '不在 git repo')
+$gr = Join-Path $tmpRoot 'secrepo'; New-Item -ItemType Directory -Force (Join-Path $gr 'src') | Out-Null
+$g = { param([string[]]$a) $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; try { (& git -C $gr @a 2>$null) } finally { $ErrorActionPreference = $eap } }
+$null = & $g @('init', '-q'); $null = & $g @('config', 'user.email', 't@t'); $null = & $g @('config', 'user.name', 't'); $null = & $g @('config', 'core.autocrlf', 'false')
+Write-Fixture (Join-Path $gr 'src\app.cfg') "name=x`n"; $null = & $g @('add', '-A'); $null = & $g @('commit', '-q', '-m', 'base'); $sBase = (& $g @('rev-parse', 'HEAD'))
+Write-Fixture (Join-Path $gr 'src\app.cfg') ("name=x`nconn=Server=db;" + 'Pass' + "word=RealOne42;`n"); $null = & $g @('commit', '-q', '-am', 'secret'); $sHead = (& $g @('rev-parse', 'HEAD'))
+$sc = Join-Path $gr 'AI_Service\spec\c1'; New-Item -ItemType Directory -Force (Join-Path $sc 'qa') | Out-Null
+$r = & $sg $sc
+Check '🔴 在 git repo、沒有獨立驗收委託檔 ⇒ 不放行' (-not $r.Passed -and ($r.Reasons -join ' ') -match '找不到 qa/獨立驗收委託')
+Write-Fixture (Join-Path $sc 'qa\獨立驗收委託_R1.md') "# 委託`n## 範圍`n- 受驗 diff：（之後補）`n"
+$r = & $sg $sc
+Check '委託檔沒寫 git diff 範圍 ⇒ 不放行並點名檔案' (-not $r.Passed -and ($r.Reasons -join ' ') -match '獨立驗收委託_R1\.md.*找不到「git diff')
+Write-Fixture (Join-Path $sc 'qa\獨立驗收委託_R2.md') "# 委託`n## 範圍`n- 受驗 diff：``git diff $sBase..$sHead -- src``，分支 feature/x`n"
+$r = & $sg $sc
+Check '🔴 最新一輪委託（R2）的範圍有密鑰 ⇒ 擋，點名檔:行、不印原文' (-not $r.Passed -and ($r.Reasons -join ' ') -match 'src/app\.cfg:2' -and ($r.Reasons -join ' ') -notmatch 'RealOne42')
+Write-Fixture (Join-Path $gr 'src\app.cfg') ("name=x`nconn=Server=db;" + 'Pass' + "word=RealOne42; # hd5-allow-secret 測試假值`n"); $null = & $g @('commit', '-q', '-am', 'allow'); $sHead2 = (& $g @('rev-parse', 'HEAD'))
+Write-Fixture (Join-Path $sc 'qa\獨立驗收委託_R2b.md') "# 委託`n- 受驗 diff：``git diff $sBase..$sHead2```n"
+$r = & $sg $sc
+Check '受阻重送 R2b 取最新、那一行加 hd5-allow-secret ⇒ 通過' ($r.Passed -and ($r.Details -join ' ') -match '沒有發現')
+$r = & $sg $sc (Join-Path $vmDir 'nope-secrets.mjs')
+Check '🔴 找不到 check-secrets.mjs ⇒ fail closed' (-not $r.Passed -and ($r.Reasons -join ' ') -match 'fail closed')
+Write-Fixture (Join-Path $sc 'qa\獨立驗收委託_R3.md') "- 受驗 diff：``git diff deadbeef..cafebabe```n"
+$r = & $sg $sc
+Check '範圍的 commit 不在本機 ⇒ 不放行（說明 git 失敗）' (-not $r.Passed -and ($r.Reasons -join ' ') -match 'git .*失敗')
+Remove-Item -LiteralPath (Join-Path $sc 'qa\獨立驗收委託_R3.md')
+# 端對端：證據齊全的案子放進 git repo、審過的 diff 有密鑰 ⇒ 整個工單閘要擋（不能只有 Test-HD5SecretsGate 自己會紅）
+$ce = New-EvCase $okOnsite
+$cg = { param([string[]]$a) $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; try { (& git -C $ce @a 2>$null) } finally { $ErrorActionPreference = $eap } }
+$null = & $cg @('init', '-q'); $null = & $cg @('config', 'user.email', 't@t'); $null = & $cg @('config', 'user.name', 't'); $null = & $cg @('config', 'core.autocrlf', 'false')
+Write-Fixture (Join-Path $ce 'app.cfg') "x=1`n"; $null = & $cg @('add', 'app.cfg'); $null = & $cg @('commit', '-q', '-m', 'base'); $eBase = (& $cg @('rev-parse', 'HEAD'))
+Write-Fixture (Join-Path $ce 'app.cfg') ("x=1`nconn=Server=db;" + 'Pass' + "word=RealOne42;`n"); $null = & $cg @('commit', '-q', '-am', 'secret'); $eHead = (& $cg @('rev-parse', 'HEAD'))
+Write-Fixture (Join-Path $ce 'qa\獨立驗收委託_R1.md') "- 受驗 diff：``git diff $eBase..$eHead```n"
+$eArgs = @{ CasePath = $ce; VerifyLibPath = $vmLib; SecretsTool = $secTool; ActionLabel = '改成「待驗收」' }
+$thrown = $null; try { $null = Assert-HD5AcceptanceGate @eArgs 6>$null } catch { $thrown = $_.Exception.Message }
+Check '🔴 工單閘：其他關卡都過、審過的 diff 有密鑰 ⇒ 整個工單閘擋（throw 帶密鑰原因）' ($thrown -match '工單閘未通過' -and $thrown -match '疑似密鑰')
+$thrown = $null; $e2 = $eArgs.Clone(); $e2.SecretsTool = ''; try { $ok = Assert-HD5AcceptanceGate @e2 6>$null } catch { $thrown = $_.Exception.Message }
+Check '🔴 工單閘：在 git repo 但沒給 check-secrets.mjs ⇒ fail closed' ($thrown -match 'check-secrets\.mjs')
+Write-Fixture (Join-Path $ce 'qa\獨立驗收委託_R1.md') "- 受驗 diff：``git diff $eBase..$eBase```n"
+$thrown = $null; $ok = $null; try { $ok = Assert-HD5AcceptanceGate @eArgs 6>$null } catch { $thrown = $_.Exception.Message }
+Check '工單閘：審過的範圍沒有密鑰 ⇒ 通過' ($ok -eq $true -and -not $thrown)
+# 入口腳本：workitem-ops.ps1 改待驗收要把 check-secrets.mjs 傳進工單閘（連網前就擋）
+Write-Fixture (Join-Path $ce 'qa\獨立驗收委託_R1.md') "- 受驗 diff：``git diff $eBase..$eHead```n"
+$global:HD5Net = @()
+$r = Run-Ops @('42', '-Action', 'update', '-State', '待驗收', '-CasePath', $ce, '-ToolsDir', $vmDir, '-ConfigStart', $projA, '-Pat', 'SECRETPAT123')
+Check '🔴 workitem-ops 改待驗收：審過的 diff 有密鑰 ⇒ 連網前就擋、不印密鑰原文' ($r.Threw -and $r.Msg -match '疑似密鑰' -and $r.Msg -notmatch 'RealOne42' -and $global:HD5Net.Count -eq 0)
+
 Write-Host '--- 留言不審文字（2026-11-25 使用者拍板：用正規表示式審文字易繞過又誤擋，不擋也不警告）---'
 $global:HD5Net = @()
 $r = Run-Ops @('42', '-Action', 'update', '-Comment', "第二輪修正完成。`n只按確定不算修改，維持就不用回。", '-ConfigStart', $projA, '-Pat', 'SECRETPAT123')
@@ -561,4 +611,4 @@ finally {
 }
 
 Write-Host ''
-if ($script:fail) { Write-Host "FAILED: $($script:fail)" -ForegroundColor Red; exit 1 } else { Write-Host 'ALL PASSED' -ForegroundColor Green }
+if ($script:fail) { Write-Host "FAILED: $($script:fail)" -ForegroundColor Red; exit 1 } else { Write-Host 'ALL PASSED' -ForegroundColor Green; exit 0 }

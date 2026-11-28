@@ -66,7 +66,8 @@ Check '沒有警告時放行訊息不帶警告' ($r.Ctx -notmatch 'grill-gate �
 New-Case 'noext' '四角色' -WithGrill
 Set-Content (Join-Path $ai 'spec\noext\case_spec_content\spec_001.md') "## 5. 驗收條件`n- [ ] x（@功能:f-a）`n`n路線：四角色，高風險：否，理由：沒寫外部系統" -Encoding UTF8
 $r = Invoke-Hook 'backend-expert' '任務：修 AI_Service/spec/noext 的匯入'
-Check '閘有警告 ⇒ 照樣放行（exit 0），放行訊息帶出「grill-gate 警告：外部系統…」' ((Test-PassLine $r 'backend-expert' 'noext' '0') -and $r.Ctx -match 'grill-gate 警告：外部系統')
+Check '閘有警告 ⇒ 照樣放行（exit 0），放行訊息帶出「grill-gate 警告：[1/1] 外部系統…」' ((Test-PassLine $r 'backend-expert' 'noext' '0') -and $r.Ctx -match 'grill-gate 警告：\[1/1\] 外部系統')
+Check '警告摘要排在各項前面（共 1 項、列出類別）' ($r.Ctx -match 'grill-gate 警告摘要：共 1 項（外部系統）' -and $r.Ctx.IndexOf('警告摘要') -lt $r.Ctx.IndexOf('[1/1]'))
 $r = Invoke-Hook 'backend-expert' '任務：修 AI_Service/spec/bug-nosa 的匯入'
 Check '🔴 小問題沒有 SA 分析就派實作代理 ⇒ 攔（exit 2，帶 validate 的原因）' ($r.Code -eq 2 -and $r.Err -match 'bug-analysis')
 Check '攔下時 stdout 不印放行訊息' ($r.Out -notmatch '放行')

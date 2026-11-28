@@ -108,6 +108,51 @@ function Test-DevOpsAcceptanceGate {
     return [pscustomobject]@{ Passed = ($reasons.Count -eq 0); Reasons = $reasons; Details = $details }
 }
 
+# ── 密鑰掃描閘（2026-11-28）：改待驗收、上傳結案報告前，對「獨立驗收審過的那段 diff」跑 check-secrets.mjs ─────
+# 範圍取最新一輪 qa/獨立驗收委託_R{n}.md 裡的 `git diff <起點>..<終點>`（審查者看的就是這段）。
+#   案子不在 git repo 裡 ⇒ 略過（只記一行明細）；在 git repo 裡但找不到委託檔或範圍、找不到工具或 node、git 讀不到範圍 ⇒ 不放行（fail closed）。
+function Get-HD5ReviewDiffRange {
+    param([string]$CasePath)
+    $qa = [IO.Path]::Combine([string]$CasePath, 'qa')
+    $latest = Get-DevOpsLatestRoundFile -Dir $qa -Pattern '^獨立驗收委託_(?:[^\\/]+_)?R(?<n>\d+)(?<b>[a-z])?\.md$'
+    if ($null -eq $latest) { return [pscustomobject]@{ Range = $null; File = $null } }
+    $m = [regex]::Match((Get-Content -Raw -LiteralPath $latest.File.FullName -Encoding UTF8), 'git\s+diff\s+(?:--\S+\s+)*([^\s`\-][^\s`]*\.\.\.?[^\s`]+)')
+    return [pscustomobject]@{ Range = $(if ($m.Success) { $m.Groups[1].Value } else { $null }); File = $latest.File.Name }
+}
+
+function Test-HD5SecretsGate {
+    param([string]$CasePath, [string]$SecretsTool, [string[]]$SecretsToolSearched)
+    $fail = { param($r) [pscustomobject]@{ Passed = $false; Reasons = @($r); Details = @() } }
+    $top = $null
+    if (-not [string]::IsNullOrWhiteSpace($CasePath) -and (Test-Path -LiteralPath $CasePath -PathType Container)) {
+        $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try { $top = (& git -C $CasePath rev-parse --show-toplevel 2>$null); if ($LASTEXITCODE -ne 0) { $top = $null } } finally { $ErrorActionPreference = $eap }
+    }
+    if (-not $top) { return [pscustomobject]@{ Passed = $true; Reasons = @(); Details = @('密鑰掃描：案子不在 git repo 裡，略過') } }
+    $rg = Get-HD5ReviewDiffRange -CasePath $CasePath
+    if (-not $rg.File) { return (& $fail '密鑰掃描：找不到 qa/獨立驗收委託_R{n}.md，不知道要掃哪段 diff（hd5-review 第三節），不放行') }
+    if (-not $rg.Range) { return (& $fail "密鑰掃描：$($rg.File) 裡找不到「git diff <起點>..<終點>」的受驗範圍，不放行（委託檔「範圍」要寫受驗 diff）") }
+    if ([string]::IsNullOrWhiteSpace($SecretsTool) -or -not (Test-Path -LiteralPath $SecretsTool -PathType Leaf)) {
+        $where = if (@($SecretsToolSearched).Count) { "（找過：$(@($SecretsToolSearched) -join '、')）" } else { '' }
+        return (& $fail "密鑰掃描：找不到 check-secrets.mjs$where，不放行（fail closed）。用 -ToolsDir 指到 HD5 工具資料夾，或重新安裝 HD5 工具")
+    }
+    $node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $node) { return (& $fail '密鑰掃描：找不到 node（check-secrets.mjs 要用），不放行（fail closed）') }
+    $origEnc = [Console]::OutputEncoding; $origEap = $ErrorActionPreference
+    try {
+        try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+        $ErrorActionPreference = 'Continue'
+        $raw = @(& $node.Source $SecretsTool --diff $rg.Range --root $top 2>&1)
+        $code = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $origEap; try { [Console]::OutputEncoding = $origEnc } catch { } }
+    $lines = @($raw | ForEach-Object { [string]$_ } | Where-Object { $_.Trim() })
+    if ($code -eq 0) { return [pscustomobject]@{ Passed = $true; Reasons = @(); Details = @("密鑰掃描：$($rg.File) 的 $($rg.Range) 沒有發現") } }
+    $hits = @($lines | Where-Object { $_ -match '^❌' -and $_ -notmatch '密鑰掃描：' } | ForEach-Object { $_ -replace '^❌\s*', '' })
+    if ($code -eq 1 -and $hits.Count) { return [pscustomobject]@{ Passed = $false; Reasons = @("密鑰掃描：$($rg.Range) 有 $($hits.Count) 處疑似密鑰：$($hits -join '、')。改成讀環境變數或密鑰管理服務（已 push 的要換掉密鑰）；確定是測試假值才在那一行加 hd5-allow-secret"); Details = @() } }
+    return (& $fail "密鑰掃描：check-secrets.mjs 失敗（exit $code）：$(($lines -join ' ').Trim())")
+}
+
 # 入口腳本共用的「過閘」流程：印結果、決定擋不擋。兩支入口（workitem-ops.ps1 改待驗收、upload-case-report.ps1 上傳）都呼叫這支。
 #   -SkipReason 非空白 ⇒ 略過並明講理由；空白（含全是空格）不算理由。
 #   -Preview ⇒ 預覽模式：閘沒過只印紅字「正式執行會被擋」，不拋錯。
@@ -123,7 +168,9 @@ function Assert-HD5AcceptanceGate {
         [string]$ActionLabel = '改狀態',
         [string]$VerifyRoot,
         [string]$VerifyLibPath,
-        [string[]]$VerifyLibSearched
+        [string[]]$VerifyLibSearched,
+        [string]$SecretsTool,
+        [string[]]$SecretsToolSearched
     )
     if (-not [string]::IsNullOrWhiteSpace($SkipReason)) {
         Write-Host "⚠ 已略過工單閘（$ActionLabel）：理由「$($SkipReason.Trim())」" -ForegroundColor Yellow
@@ -136,9 +183,10 @@ function Assert-HD5AcceptanceGate {
         throw $m
     }
     $gate = Test-DevOpsAcceptanceGate -CasePath $CasePath -VerifyRoot $VerifyRoot -VerifyLibPath $VerifyLibPath -VerifyLibSearched $VerifyLibSearched
-    foreach ($d in $gate.Details) { Write-Host "  工單閘｜$d" }
-    if (-not $gate.Passed) {
-        $why = $gate.Reasons -join '；'
+    $sec = Test-HD5SecretsGate -CasePath $CasePath -SecretsTool $SecretsTool -SecretsToolSearched $SecretsToolSearched
+    foreach ($d in @($gate.Details) + @($sec.Details)) { Write-Host "  工單閘｜$d" }
+    if (-not ($gate.Passed -and $sec.Passed)) {
+        $why = (@($gate.Reasons) + @($sec.Reasons)) -join '；'
         if ($Preview) { Write-Host "❌ 工單閘未通過（正式執行會被擋）：$why" -ForegroundColor Red; return $false }
         throw "工單閘未通過，不$($ActionLabel)：$why"
     }

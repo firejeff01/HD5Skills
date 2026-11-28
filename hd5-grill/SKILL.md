@@ -159,7 +159,7 @@ Claude 由派發 hook（`AI_Service/hd5-tools/hooks/grill-gate.ps1`）自動呼�
   （本節第六節第 1 條的機械化：有終止標記≠每題都收斂）。「待拍板：無」「待拍板 0 題」這類總結行不算。
 - **問卷回收**（2026-11-24）：路線＝PM 端已完成時，`pm/` 或 `case_spec_content/attachments/` 的每份 `spec_*_r*.html` 都要有同名的 `*_answer*.html`
   （放 `pm/` 或 `case_spec_content/`），缺 ⇒ exit 13。
-- **警告（不擋，2026-11-25；設計形狀 2026-11-28）**：下面三項照樣檢查，但只在 stdout 印「grill-gate 警告：…」（派發 hook 帶進放行訊息），exit 碼照舊。
+- **警告（不擋，2026-11-25；設計形狀 2026-11-28）**：下面三項照樣檢查，但只在 stdout 印「grill-gate 警告：[i/N] …」，有警告時第一行先印「grill-gate 警告摘要：共 N 項（類別…）」（派發 hook 帶進放行訊息），exit 碼照舊。
   - 外部系統：`spec_001.md` 該寫「外部系統：有｜無」——建議寫在路線那一行（`路線：四角色，高風險：否，外部系統：無，理由：…`），
     也可以另起一行 `外部系統：有`；寫「有」時派實作／QA 前看 `sa/external-samples.md`（第三節第 1 條第九分支）。`-SkipRoute` 時不看。
   - 驗收回合：`qa/rework-log.md` 有處理類別＝新規則的輪次 R{k} 時，派實作／QA 前看有沒有收斂完的「驗收回合 R{k}」小節（第二節第 6 條；
