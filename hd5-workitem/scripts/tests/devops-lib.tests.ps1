@@ -38,7 +38,7 @@ foreach ($cand in (Join-Path $scripts '..\_verify-map-lib.ps1'), (Join-Path $scr
 Check '找得到功能地圖檢查器 _verify-map-lib.ps1（安裝位置或套件原始碼）' ([bool]$vmSrc)
 if ($vmSrc) { Copy-Item -LiteralPath $vmSrc -Destination (Join-Path $iso 'tools') -Force }
 # 退回紀錄閘的總帳檢查器（同一層；它 import check-guard-refs.mjs）
-if ($vmSrc) { foreach ($n in 'check-rework-ledger.mjs', 'check-guard-refs.mjs') { $src = Join-Path (Split-Path -Parent $vmSrc) $n; if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $iso 'tools') -Force } } }
+if ($vmSrc) { foreach ($n in 'check-rework-ledger.mjs', 'check-guard-refs.mjs', 'check-secrets.mjs') { $src = Join-Path (Split-Path -Parent $vmSrc) $n; if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $iso 'tools') -Force } } }
 $vmDir = Join-Path $iso 'tools'
 $scripts = Join-Path $iso 'tools\workitem'
 
@@ -419,6 +419,21 @@ Check '-Upload：上傳附件＋掛到工單各一次' (-not $r.Threw -and $post
 Check '-Upload：PATCH 是陣列、只加 AttachedFile relation' ($patch.Count -eq 1 -and $patch[0].Body.TrimStart().StartsWith('[') -and $patch[0].Body -match 'AttachedFile' -and $patch[0].Body -notmatch 'System.State')
 Check '-Upload：輸出不含 PAT' ($r.Out -notmatch 'SECRETPAT123')
 
+Write-Host '--- upload-case-report：上傳前工單閘的密鑰掃描（2026-11-28，與改待驗收同一套）---'
+$cSec = New-UpCase @{ 'Codex驗收結果_R1.md' = '總結：通過'; 'onsite-gate_R1.md' = $onsiteOk }
+$sg = { param([string[]]$a) $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; try { (& git -C $cSec @a 2>$null) } finally { $ErrorActionPreference = $eap } }
+$null = & $sg @('init', '-q'); $null = & $sg @('config', 'user.email', 't@t'); $null = & $sg @('config', 'user.name', 't'); $null = & $sg @('config', 'core.autocrlf', 'false')
+Write-Fixture (Join-Path $cSec 'app.cfg') "x=1`n"; $null = & $sg @('add', 'app.cfg'); $null = & $sg @('commit', '-q', '-m', 'base'); $uBase = (& $sg @('rev-parse', 'HEAD'))
+Write-Fixture (Join-Path $cSec 'app.cfg') ("x=1`nconn=Server=db;" + 'Pass' + "word=RealOne42;`n"); $null = & $sg @('commit', '-q', '-am', 'secret'); $uHead = (& $sg @('rev-parse', 'HEAD'))
+Write-Fixture (Join-Path $cSec 'qa\獨立驗收委託_R1.md') "- 受驗 diff：``git diff $uBase..$uHead```n"
+$r = Up $cSec @{ Upload = $true }
+Check '🔴 -Upload：其他關卡都過、審過的 diff 有密鑰 ⇒ 連網前擋、不印密鑰原文' ($r.Threw -and $r.Msg -match '疑似密鑰' -and $r.Msg -notmatch 'RealOne42' -and $global:HD5Net.Count -eq 0)
+$r = Up $cSec @{}
+Check '預覽（沒 -Upload）有密鑰：不擋，印出「正式執行會被擋」與密鑰原因' (-not $r.Threw -and $r.Out -match '正式執行會被擋' -and $r.Out -match '疑似密鑰' -and @($global:HD5Net | Where-Object { $_.Method -ne 'Get' }).Count -eq 0)
+Write-Fixture (Join-Path $cSec 'qa\獨立驗收委託_R1.md') "- 受驗 diff：``git diff $uBase..$uBase```n"
+$r = Up $cSec @{ Upload = $true }
+Check '-Upload：審過的範圍沒有密鑰 ⇒ 上傳' (-not $r.Threw -and @($global:HD5Net | Where-Object { $_.Method -eq 'Post' }).Count -eq 1)
+
 Write-Host '--- upload-case-report：需求方驗收完成後上傳要有 5.1 與退回總帳（2026-11-25）---'
 $rl = "# 退回紀錄`n`n| 輪次 | 退回原因 | 處理類別 | 根因類別 | 錯誤寫法 | 為什麼 | 修正 |`n|---|---|---|---|---|---|---|`n| R1 | a | 程式錯誤 | 樣本不足 | 名稱只讀 Name 欄 | b | c |`n"
 $cDone = New-UpCase @{ 'Codex驗收結果_R1.md' = '總結：通過'; 'onsite-gate_R1.md' = $onsiteOk; 'rework-log.md' = $rl }
@@ -456,4 +471,4 @@ finally {
 }
 
 Write-Host ''
-if ($script:fail) { Write-Host "FAILED: $($script:fail)" -ForegroundColor Red; exit 1 } else { Write-Host 'ALL PASSED' -ForegroundColor Green }
+if ($script:fail) { Write-Host "FAILED: $($script:fail)" -ForegroundColor Red; exit 1 } else { Write-Host 'ALL PASSED' -ForegroundColor Green; exit 0 }

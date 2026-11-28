@@ -174,7 +174,7 @@ function Find-VerifyColumn {
 
 function Get-ReworkLog {
     # qa/rework-log.md 的退回表（hd5-workflow「驗收退回之後」）：表頭要有「輪次」與「處理類別」欄。
-    #   → { Found; Rows[]: { Round; Year; Month; Day; Category; Text } }
+    #   → { Found; Rows[]: { Round; Year; Month; Day; Category; RootCause（「根因類別」欄，沒有這欄＝空字串）; Text } }
     # 輪次欄寫 R{k}，可接日期：R3（11/24）、R3（2026-11-24）；同一輪的續行可只寫 R3 或留空（沿用上一列的輪次）。
     param([string]$Path)
     $rows = @()
@@ -182,7 +182,7 @@ function Get-ReworkLog {
     $tables = Get-VerifyMdTables @(Get-Content -LiteralPath $Path -Encoding UTF8)
     $t = $tables | Where-Object { (Find-VerifyColumn $_.Header '^輪次') -ge 0 -and (Find-VerifyColumn $_.Header '處理類別') -ge 0 } | Select-Object -First 1
     if (-not $t) { return [pscustomobject]@{ Found = $false; Rows = @() } }
-    $ri = Find-VerifyColumn $t.Header '^輪次'; $ki = Find-VerifyColumn $t.Header '處理類別'
+    $ri = Find-VerifyColumn $t.Header '^輪次'; $ki = Find-VerifyColumn $t.Header '處理類別'; $rci = Find-VerifyColumn $t.Header '根因類別'
     $last = 0
     foreach ($c in $t.Rows) {
         $cell = if ($ri -lt $c.Count) { [string]$c[$ri] } else { '' }
@@ -193,7 +193,7 @@ function Get-ReworkLog {
         $y = 0; $mo = 0; $d = 0
         $dm = [regex]::Match($cell, '(?:(\d{4})[-/])?(\d{1,2})[-/](\d{1,2})')
         if ($dm.Success) { if ($dm.Groups[1].Success) { $y = [int]$dm.Groups[1].Value }; $mo = [int]$dm.Groups[2].Value; $d = [int]$dm.Groups[3].Value }
-        $rows += [pscustomobject]@{ Round = $round; Year = $y; Month = $mo; Day = $d; Category = $(if ($ki -lt $c.Count) { [string]$c[$ki] } else { '' }); Text = ($c -join ' | ') }
+        $rows += [pscustomobject]@{ Round = $round; Year = $y; Month = $mo; Day = $d; Category = $(if ($ki -lt $c.Count) { [string]$c[$ki] } else { '' }); RootCause = $(if ($rci -ge 0 -and $rci -lt $c.Count) { ([string]$c[$rci]).Trim() } else { '' }); Text = ($c -join ' | ') }
     }
     return [pscustomobject]@{ Found = $true; Rows = $rows }
 }

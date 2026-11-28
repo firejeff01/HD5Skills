@@ -25,12 +25,16 @@
   絕不動 AGENTS.md、CLAUDE.md、workflow.json、settings.json（不合併 hook，只檢查兩支有沒有掛）、spec／verify、
   PAT 檔（*.local.*、pat*.txt）與使用者自建檔。不刪檔：套件已不含的檔只列出來請人確認。沒導入過就報錯；不能跟 -Force 一起用。
 
+  -InstallPreCommit（選配，一般安裝與 -Update 都可用）：在 git 的 hooks 資料夾裝 pre-commit，commit 前用 check-secrets.mjs --staged 掃已 stage 的新增行，
+  有疑似密鑰就擋這次 commit。已經有別的 pre-commit（不是本套件裝的）就不動，只印怎麼接上；本套件裝的會更新成新版。
+
 .EXAMPLE
   & ./install.ps1 -RepoRoot D:\work\MyRepo
   & ./install.ps1 -RepoRoot D:\work\MyRepo -ProjectDir src\MyApp
   & ./install.ps1 -RepoRoot D:\work\MyRepo -Tracker azure-devops   （之後才決定用 Azure DevOps，再跑一次補裝即可）
   & ./install.ps1 -RepoRoot D:\work\MyRepo -ProjectDir src\MyApp -Update   （已導入過：套件出新版時更新 skills、工具，代理檔三方比對）
   & ./install.ps1 -RepoRoot D:\work\MyRepo -ProjectDir src\MyApp -Update -AcceptAgents sa-expert   （AI 合併完 sa-expert 的衝突後）
+  & ./install.ps1 -RepoRoot D:\work\MyRepo -ProjectDir src\MyApp -Update -InstallPreCommit   （加裝 commit 前的密鑰掃描）
 #>
 [CmdletBinding()]
 param(
@@ -40,6 +44,7 @@ param(
     [switch]$Force,
     [switch]$Update,
     [string[]]$AcceptAgents = @(),
+    [switch]$InstallPreCommit,
     [switch]$SkipTests
 )
 $ErrorActionPreference = 'Stop'
@@ -375,6 +380,27 @@ if (-not $Update) {
 
     Write-Host "  複製 $($copied.Count) 個檔、settings.json 新增 hook $added 筆"
     if ($skipped.Count) { Write-Host "  已存在而跳過 $($skipped.Count) 個（要覆蓋加 -Force）：$(($skipped | Select-Object -First 6) -join '、')$(if ($skipped.Count -gt 6) { '…' })" }
+}
+
+# ── 選配：pre-commit 密鑰掃描（2026-11-28）──
+# hook 在 repo 根執行，工具路徑寫成相對 repo 根（含 ProjectDir 前綴）；hooks 資料夾用 git 問（worktree、core.hooksPath 都對得上）。
+if ($InstallPreCommit) {
+    $hooksRel = (& git -C $RepoRoot rev-parse --git-path hooks 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $hooksRel) { throw "找不到 git 的 hooks 資料夾：$RepoRoot" }
+    $hooksDir = if ([IO.Path]::IsPathRooted($hooksRel)) { $hooksRel } else { Join-Path $RepoRoot $hooksRel }
+    New-Item -ItemType Directory -Force $hooksDir | Out-Null
+    $hookF = Join-Path $hooksDir 'pre-commit'
+    $hookText = [IO.File]::ReadAllText((Join-Path $kit 'hd5-onboard/templates/pre-commit-secrets.sh')).Replace("`r`n", "`n").Replace('__TOOL__', "$prefix$toolsRel/check-secrets.mjs")
+    $mine = 'HD5Skills 密鑰掃描 pre-commit hook'
+    if ((Test-Path -LiteralPath $hookF) -and -not ([IO.File]::ReadAllText($hookF)).Contains($mine)) {
+        Write-Warning ("已經有別的 pre-commit hook（$hookF），沒有覆蓋。要接上密鑰掃描，在它裡面加一行：" +
+            "node `"$prefix$toolsRel/check-secrets.mjs`" --staged || exit 1")
+    } else {
+        $existed = Test-Path -LiteralPath $hookF
+        [IO.File]::WriteAllText($hookF, $hookText, [Text.UTF8Encoding]::new($false))
+        if (-not $IsWindows) { & chmod +x $hookF }
+        Write-Host "  pre-commit 密鑰掃描：$(if ($existed) { '已更新' } else { '已安裝' })（$hookF）"
+    }
 }
 
 # ── 裝完驗證 ──
