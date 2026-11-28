@@ -7,6 +7,8 @@ $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $hook = (Resolve-Path (Join-Path $PSScriptRoot '..\main-edit-guard.ps1')).Path
 $script:fail = 0
+# hook 在專案裡一律由 pwsh（PowerShell 7）執行（settings.hooks.json）⇒ 測試也用 pwsh 跑 hook；本測試本身 7 與 5.1 都能跑
+$script:selfExe = $($c = Get-Command pwsh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $c.Source } else { (Get-Process -Id $PID).Path })
 function Check($name, $cond) { if ($cond) { Write-Host "  ok   $name" } else { Write-Host "  FAIL $name" -ForegroundColor Red; $script:fail++ } }
 function G { & git -C $script:repo @args 2>&1 | Out-Null; if ($LASTEXITCODE) { throw "git $args 失敗" } }
 # 測試裡的路徑寫 IMOCore/，跑之前換成本專案資料夾（新專案起手包複製過去也能跑）
@@ -35,10 +37,10 @@ function Invoke-Hook([string]$tool, [string]$file, [string]$agentId) {
     $p = @{ tool_name = $tool; cwd = $script:repo; tool_input = @{ file_path = (Join-Path $script:repo $file) } }
     if ($agentId) { $p.agent_id = $agentId; $p.agent_type = 'csharp-expert' }
     $json = $p | ConvertTo-Json -Compress
-    $psi = [Diagnostics.ProcessStartInfo]::new([Environment]::ProcessPath, "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"`$global:LASTEXITCODE = 0; & '$($hook.Replace("'", "''"))'; if (`$?) { exit 0 } elseif (`$LASTEXITCODE) { exit `$LASTEXITCODE } else { exit 1 }`"")
+    $psi = [Diagnostics.ProcessStartInfo]::new($script:selfExe, "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"`$global:LASTEXITCODE = 0; & '$($hook.Replace("'", "''"))'; if (`$?) { exit 0 } elseif (`$LASTEXITCODE) { exit `$LASTEXITCODE } else { exit 1 }`"")
     $psi.RedirectStandardInput = $true; $psi.RedirectStandardError = $true; $psi.RedirectStandardOutput = $true; $psi.UseShellExecute = $false
-    $psi.WorkingDirectory = $script:repo; $psi.StandardInputEncoding = [Text.UTF8Encoding]::new($false); $psi.StandardErrorEncoding = [Text.Encoding]::UTF8
-    $pr = [Diagnostics.Process]::Start($psi); $pr.StandardInput.Write($json); $pr.StandardInput.Close()
+    $psi.WorkingDirectory = $script:repo; $psi.StandardErrorEncoding = [Text.Encoding]::UTF8
+    $pr = [Diagnostics.Process]::Start($psi); $pr.StandardInput.BaseStream.Write(($jb = [Text.UTF8Encoding]::new($false).GetBytes($json)), 0, $jb.Length); $pr.StandardInput.Close()
     $err = $pr.StandardError.ReadToEnd(); $null = $pr.StandardOutput.ReadToEnd(); $pr.WaitForExit()
     [pscustomobject]@{ Code = $pr.ExitCode; Err = $err }
 }
@@ -84,7 +86,7 @@ Remove-Item -LiteralPath (Join-Path $script:repo (Fix 'IMOCore/AI_Service/spec/m
 G checkout -q project_x
 
 Write-Host '--- 壞輸入一律放行 ---'
-$psi = [Diagnostics.ProcessStartInfo]::new([Environment]::ProcessPath, "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"`$global:LASTEXITCODE = 0; & '$($hook.Replace("'", "''"))'; if (`$?) { exit 0 } elseif (`$LASTEXITCODE) { exit `$LASTEXITCODE } else { exit 1 }`"")
+$psi = [Diagnostics.ProcessStartInfo]::new($script:selfExe, "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"`$global:LASTEXITCODE = 0; & '$($hook.Replace("'", "''"))'; if (`$?) { exit 0 } elseif (`$LASTEXITCODE) { exit `$LASTEXITCODE } else { exit 1 }`"")
 $psi.RedirectStandardInput = $true; $psi.RedirectStandardError = $true; $psi.UseShellExecute = $false
 $pr = [Diagnostics.Process]::Start($psi); $pr.StandardInput.Write('不是 JSON'); $pr.StandardInput.Close(); $null = $pr.StandardError.ReadToEnd(); $pr.WaitForExit()
 Check '解析失敗 ⇒ 放行' ($pr.ExitCode -eq 0)

@@ -6,6 +6,11 @@
 #>
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+# install.ps1 需要 PowerShell 7（README「需求」；用到 [Environment]::ProcessPath、ProcessStartInfo.ArgumentList），本測試同樣只在 pwsh 跑
+if ($PSVersionTable.PSEdition -eq 'Desktop') {
+    Write-Host 'FAILED: install.ps1 與本測試需要 PowerShell 7（pwsh），Windows PowerShell 5.1 不支援。請改用：pwsh -File tests/install.tests.ps1' -ForegroundColor Red
+    exit 1
+}
 $kit = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $exe = [Environment]::ProcessPath
 $script:fail = 0

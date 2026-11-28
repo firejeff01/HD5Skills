@@ -96,6 +96,7 @@ spec／verify 與 PAT 檔；不刪檔，套件已不含的檔只列出來請你�
 ## 需求
 
 - Git、PowerShell 7（`pwsh`，Windows／macOS／Linux 都有）、Node.js 18+
+- `install.ps1` 與 hook 只用 pwsh；質詢閘、功能地圖檢查、工單工具與各 lib 也要能在 Windows PowerShell 5.1 跑（Codex 可能用 5.1）
 - Codex 沒有 hook：Codex 派發前要顯式跑質詢閘（AGENTS.md 會寫明）
 
 ## 測試
@@ -112,6 +113,7 @@ node HD5Skills/hd5-onboard/scripts/check-onboard.mjs --selftest
 node HD5Skills/hd5-workflow/tools/check-guard-refs.mjs --selftest
 node HD5Skills/hd5-workflow/tools/check-rework-ledger.mjs --selftest      # 退回總帳／rework-log／5.1／上線後缺陷 對帳
 node HD5Skills/hd5-workflow/tools/check-secrets.mjs --selftest            # 密鑰掃描
+& ./HD5Skills/tests/repo-hygiene.tests.ps1                               # 所有 .ps1 有 BOM、文字檔沒有控制字元（pwsh 與 5.1 都要跑）
 & ./HD5Skills/hd5-workitem/scripts/tests/workitem-ops.tests.ps1           # 工單工具（假 API）；devops-lib.tests.ps1 同
 ```
 
@@ -119,3 +121,4 @@ node HD5Skills/hd5-workflow/tools/check-secrets.mjs --selftest            # 密�
 
 通用的不准寫死專案資料夾、代理名、副檔名、技術名詞——工具一律從 `.claude/workflow.json` 讀（`_hd5-locate.ps1` 往上找）。
 專案事實寫進該 repo 的 AGENTS.md，不寫進技能。
+`.ps1` 一律存成 **UTF-8 with BOM**：Windows PowerShell 5.1 讀沒有 BOM 的檔會用系統字碼頁（Big5），中文變亂碼，測試解析失敗、中文比對字串靜默失效。`tests/repo-hygiene.tests.ps1` 會檢查。測試要 7 與 5.1 都能跑的，不要用 .NET Core 才有的 API（`[Environment]::ProcessPath`、`ProcessStartInfo.ArgumentList`、`StandardInputEncoding`）。
