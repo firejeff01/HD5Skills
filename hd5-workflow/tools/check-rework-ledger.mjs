@@ -26,6 +26,10 @@
 //      --stage done：rework-log 有 m 列 ⇒ ai-case-report.md 有「### 5.1」節且表格 m 列、有「錯誤寫法」欄（m＝0 要寫「退回 0 次」）、
 //                    總帳有本案案號 m 列（案號：--id，沒給就取報告第一行的 #NNN）
 //   C. 不帶 --case 的 --check：A＋已結案的案子（報告 5.1 已填，或案號出現在總帳）都跑 B 的 done 檢查
+//   D. 上線後發現的缺陷（逃逸缺陷，2026-11-28）：已結案的案子之後在正式環境出事，修它的小問題案 sa/bug-analysis*.md 寫
+//      「逃逸：是，來源 #NNN」⇒ 那個小問題案結案時（--stage done 與 --check），總帳要有一列 案號＝#NNN、輪次＝上線（可接日期）。
+//      輪次「上線」的列跟驗收退回用同一套根因類別、錯誤寫法、對應規則與升級判定，但不算進來源案的 5.1／rework-log 列數。
+//      「逃逸：是」沒寫來源案號 ⇒ 錯。逃逸：否（理由）不用記帳。
 //
 // 用法：node check-rework-ledger.mjs --check [--root <repo 根或專案資料夾>]              verify 模式（含升級），不合格 exit 1
 //       node check-rework-ledger.mjs --check --gate --case <AI_Service/spec/<案名>> --stage accept|done [--rejections k] [--id NNN]
@@ -157,13 +161,13 @@ export function checkLedger(text, resolveRef, opts = {}) {
     const c = r.cells
     if (c.length !== LEDGER_HEADER.length) { errors.push(`${r.line} 欄位 ${c.length} 欄，應為 ${LEDGER_HEADER.length} 欄（${LEDGER_HEADER.join('／')}）`); return }
     const [date, id, round, category, bad, , , rule] = c
-    if (!/^R\d+/.test(round)) errors.push(`${r.line} 輪次「${round}」要寫 R{n}（R1、R2…）`)
+    if (!/^(R\d+|上線)/.test(round)) errors.push(`${r.line} 輪次「${round}」要寫 R{n}（R1、R2…；驗收退回）或 上線（上線後才發現的缺陷，可接日期）`)
     if (!CATEGORIES.includes(category)) errors.push(`${r.line} 根因類別「${category}」不在清單：${CATEGORIES.join('／')}`)
     for (const e of judgeBadPattern(bad, category)) errors.push(`${r.line} ${e}`)
     const j = judgeRule(rule, category, resolveRef, processGates)
     for (const e of j.errors) errors.push(`${r.line} ${e}`)
     for (const wv of j.warns) warns.push(`rework-ledger.md:${r.line} ${wv}`)
-    rows.push({ line: r.line, order: idx, date: /^\d{4}-\d{2}-\d{2}/.test(date) ? date.slice(0, 10) : '', id: normId(id), round, category, refs: j.refs, hasGuard: j.hasGuard, hasProgramGuard: j.hasProgramGuard, todos: j.todos })
+    rows.push({ line: r.line, order: idx, date: /^\d{4}-\d{2}-\d{2}/.test(date) ? date.slice(0, 10) : '', id: normId(id), round, escaped: /^上線/.test(round), category, refs: j.refs, hasGuard: j.hasGuard, hasProgramGuard: j.hasProgramGuard, todos: j.todos })
   })
   if (!escalate) return { errors, warns, rows }
   // V1 程式寫法類：第一次就要程式守衛，做不到先列 待辦（G-NN）；無（理由）、流程閘、文字都不算（糾正一次就變成確定性檢查）
@@ -207,8 +211,30 @@ export function checkCase({ caseDir, stage, rejections = 0, id = null, ledgerRow
   if (s.found) for (const e of s.badErrors) errors.push(`${name}：ai-case-report.md ${e}`)
   if (!caseId) errors.push(`${name}：不知道本案案號（給 --id，或報告第一行寫 #NNN），無法對總帳`)
   else {
-    const n = ledgerRows.filter(r => r.id === caseId).length
-    if (n !== m) errors.push(`${name}：總帳 rework-ledger.md 有本案 #${caseId} ${n} 列，rework-log 有 ${m} 列——每次退回都要記進總帳（hd5-case-report 第七節）`)
+    const n = ledgerRows.filter(r => r.id === caseId && !r.escaped).length
+    if (n !== m) errors.push(`${name}：總帳 rework-ledger.md 有本案 #${caseId} ${n} 列（輪次 R{n}），rework-log 有 ${m} 列——每次退回都要記進總帳（hd5-case-report 第七節）`)
+  }
+  errors.push(...checkEscape(caseDir, ledgerRows))
+  return errors
+}
+
+// 逃逸缺陷：小問題案的 sa/bug-analysis*.md 寫「逃逸：是，來源 #NNN」⇒ 總帳要有 #NNN 輪次「上線」的一列
+export function parseEscape(text) {
+  const m = /逃逸\**\s*[:：]\s*\**\s*(是|否)([^\n]*)/.exec(text)
+  if (!m) return { declared: false }
+  const src = /#\s*(\d+)/.exec(m[2])
+  return { declared: true, escaped: m[1] === '是', source: src ? src[1] : null, line: m[0].trim() }
+}
+export function checkEscape(caseDir, ledgerRows = []) {
+  const name = caseDir.replace(/\\/g, '/').split('/').filter(Boolean).at(-1)
+  let files = []; try { files = readdirSync(join(caseDir, 'sa')).filter(f => /^bug-analysis.*\.md$/i.test(f)) } catch { }
+  const errors = []
+  for (const f of files) {
+    const e = parseEscape(readFileSync(join(caseDir, 'sa', f), 'utf8'))
+    if (!e.declared || !e.escaped) continue
+    if (!e.source) { errors.push(`${name}：sa/${f}「${e.line}」沒寫來源案號——寫成「逃逸：是，來源 #NNN」（上線後才發現的缺陷要記回原本那個案子）`); continue }
+    if (!ledgerRows.some(r => r.id === e.source && r.escaped))
+      errors.push(`${name}：sa/${f} 寫逃逸自 #${e.source}，總帳 rework-ledger.md 要有一列 案號 #${e.source}、輪次「上線」（根因類別、錯誤寫法、為什麼沒先抓到、對應規則照驗收退回的規則填；hd5-case-report 第七節）`)
   }
   return errors
 }
@@ -253,6 +279,7 @@ export function check(root, opts = {}) {
       const rp = join(d, 'ai-case-report.md'); if (!existsSync(rp)) continue
       const s = parseReport51(readFileSync(rp, 'utf8'))
       if ((s.found && (s.rows > 0 || s.zero)) || (s.id && ledgerIds.has(s.id))) errors.push(...checkCase({ caseDir: d, stage: 'done', id: s.id, ledgerRows: L.rows }))
+      else errors.push(...checkEscape(d, L.rows))
     }
   }
   return { errors, warns, rows: L.rows, ledgerPath, exists }
@@ -386,6 +413,46 @@ export function selftest(check = checkImpl) {   // 可注入別版 check：拿�
   rmSync(join(t, ledgerFile))
   { const r = check(P); ok('--check：5.1 還沒填、案號不在總帳（未結案）⇒ 不檢查', r.errors.length === 0, r) }
 
+  // ── D. 上線後發現的缺陷（逃逸）──
+  rmSync(C, { recursive: true, force: true })
+  { const r = L(row('樣本不足', 'NullNameGuardTests', { r: '上線（12/01）' })); ok('輪次「上線（日期）」⇒ 過', r.errors.length === 0 && r.rows[0].escaped, r) }
+  { const r = L(row('動作順序', '無（先記帳）', { r: '上線' })); ok('🔴 逃逸列也照升級規則：程式寫法類只寫 無 ⇒ 錯', has(r, /動作順序 是程式寫法類/), r) }
+  { const r = L(row('動作順序', '待辦（G-01）', { id: '#100' }), row('動作順序', 'NullNameGuardTests', { id: '#100', r: '上線' }))
+    ok('🔴 驗收退回的待辦沒做、上線後同類又出事 ⇒ 再犯紅', has(r, /動作順序 再犯（#100 上線）/), r) }
+  const B = join(P, 'AI_Service', 'spec', 'bug200')
+  const setBug = (analysis, withReport = true) => {
+    rmSync(B, { recursive: true, force: true }); mkdirSync(join(B, 'sa'), { recursive: true })
+    writeFileSync(join(B, 'sa', 'bug-analysis.md'), `# bug
+## 原因
+x
+## 影響範圍
+x
+## 同類位置
+x
+## 修法
+x
+
+${analysis}
+`)
+    if (withReport) writeFileSync(join(B, 'ai-case-report.md'), report('### 5.1 退回檢討\n\n- 送驗 1 次、退回 0 次\n\n', '200'))
+  }
+  setCase(null, null); rmSync(C, { recursive: true, force: true })
+  setBug('**逃逸**：是，來源 #100（站上關卡沒測到期別跨年）')
+  { const r = L(); ok('🔴 小問題案結案、寫逃逸自 #100、總帳沒有 #100 上線列 ⇒ 錯', has(r, /bug200.*逃逸自 #100.*輪次「上線」/), r) }
+  { const r = L(row('樣本不足', 'NullNameGuardTests', { id: '#100', r: 'R1' })); ok('總帳只有 #100 的驗收退回列（R1）不算 ⇒ 仍錯', has(r, /逃逸自 #100/), r) }
+  { const r = L(row('樣本不足', 'NullNameGuardTests', { id: '#100', r: '上線（12/01）' })); ok('總帳有 #100 上線列 ⇒ 過', r.errors.length === 0, r) }
+  setBug('逃逸：是（正式環境回報）')
+  { const r = L(); ok('🔴 逃逸：是 沒寫來源案號 ⇒ 錯', has(r, /沒寫來源案號/), r) }
+  setBug('逃逸：否（新功能的 bug，還沒上線）')
+  { const r = L(); ok('逃逸：否 ⇒ 不用記帳', r.errors.length === 0, r) }
+  setBug('逃逸：是，來源 #100', false)
+  { const r = L(); ok('小問題案還沒結案（沒有 ai-case-report.md）⇒ 先不檢查', r.errors.length === 0, r) }
+  setBug('逃逸：是，來源 #100')
+  { const r = check(P, { caseDir: B, stage: 'done', gate: true, id: '200' }); ok('🔴 工單閘 --stage done 也對逃逸列（不能結案就忘了記）', has(r, /逃逸自 #100/), r) }
+  { w(ledgerFile, HEAD + row('樣本不足', 'NullNameGuardTests', { id: '#100', r: '上線' })); setCase(logOf('R1'), report(sec(1)))
+    const r = check(P, { caseDir: C, stage: 'done', gate: true, id: '100' }); ok('來源案 #100 的 5.1 列數不算上線列（rework-log 1 列、總帳 R 列 0 ⇒ 錯；上線列不能湊數）', has(r, /#100 0 列（輪次 R\{n\}）/), r) }
+  rmSync(B, { recursive: true, force: true }); rmSync(C, { recursive: true, force: true }); rmSync(join(t, ledgerFile), { force: true })
+
   // ── CLI ──
   const run = argv => { try { return { code: 0, out: execFileSync(process.execPath, [fileURLToPath(import.meta.url), ...argv], { encoding: 'utf8' }) } } catch (e) { return { code: e.status, out: String(e.stdout) } } }
   setCase(logOf('R1'), null)
@@ -421,6 +488,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     for (const x of r.rows) console.log(`${x.line}\t${x.date}\t#${x.id}\t${x.round}\t${x.category}\t${x.refs.join('、')}`)
     const n = {}; for (const x of r.rows) n[x.category] = (n[x.category] || 0) + 1
     console.log(`根因類別次數：${Object.entries(n).map(([k, v]) => `${k} ${v}`).join('、') || '（總帳沒有資料）'}`)
+    const esc = r.rows.filter(x => x.escaped)
+    console.log(`上線後才發現（逃逸）：${esc.length} 列${esc.length ? `（${[...new Set(esc.map(x => '#' + x.id))].join('、')}）` : ''}；驗收退回：${r.rows.length - esc.length} 列`)
   }
   for (const wv of r.warns) console.log(`⚠ ${wv}`)
   const mode = gate ? '（工單閘模式：不查升級）' : ''

@@ -348,6 +348,21 @@ foreach ($exe in @($selfExe)) {
     $r = Run @('-Role', 'backend', '-CasePath', $bc.Case, '-VerifyRoot', $realVerify)
     Check "$tag 小問題路線不要求設計形狀" ($r.Code -eq 0 -and $r.Out -notmatch '設計形狀')
 
+    Write-Host "--- $tag 小問題的逃逸標記（2026-11-28，只警告）---"
+    Check "$tag 🔴 bug-analysis 沒寫「逃逸：」⇒ 派實作印警告、不擋（exit 0）" ((Warned $r '逃逸') -and $r.Out -match 'GRILL_GATE=pass')
+    $ba = Join-Path $bc.Case 'sa\bug-analysis.md'; $baText = [IO.File]::ReadAllText($ba)
+    [IO.File]::WriteAllText($ba, $baText + "`n**逃逸**：是（正式環境回報）`n", [Text.UTF8Encoding]::new($false))
+    $r = Run @('-Role', 'qa', '-CasePath', $bc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 「逃逸：是」沒寫來源案號 ⇒ 警告" ((Warned $r '逃逸') -and ($r.Out -replace '\s+', '') -match '沒寫來源案號')
+    [IO.File]::WriteAllText($ba, $baText + "`n逃逸：是，來源 #2164（站上關卡沒測跨年期別）`n", [Text.UTF8Encoding]::new($false))
+    $r = Run @('-Role', 'backend', '-CasePath', $bc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 「逃逸：是，來源 #NNN」⇒ 沒警告（escape=yes）" ($r.Code -eq 0 -and $r.Out -match 'escape=yes' -and $r.Out -notmatch 'grill-gate 警告')
+    [IO.File]::WriteAllText($ba, $baText + "`n逃逸：否（還沒上線的新功能）`n", [Text.UTF8Encoding]::new($false))
+    $r = Run @('-Role', 'backend', '-CasePath', $bc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 「逃逸：否（理由）」⇒ 沒警告（escape=no）" ($r.Code -eq 0 -and $r.Out -match 'escape=no' -and $r.Out -notmatch 'grill-gate 警告')
+    $r = Run @('-Role', 'sa', '-CasePath', $bc.Case)
+    Check "$tag 派 SA 不看逃逸（那是 SA 自己要寫的）" ($r.Code -eq 0 -and $r.Out -notmatch '逃逸')
+
     $r = Run @('-Role', 'backend', '-CasePath', $c.Case)
     Check "$tag 不帶 -VerifyRoot：預設找 CasePath 往上兩層的 verify/（暫存 case 沒有 ⇒ exit 6）" ($r.Code -eq 6)
 }

@@ -82,6 +82,8 @@ check-onboard 看到清單有表格列就要求去向表、且列數不少於清
    使用者選 Azure DevOps 時，請使用者重跑 `install.ps1 -RepoRoot <repo> [-ProjectDir …] -Tracker azure-devops`（補裝 `hd5-workitem` 工單工具，並把 tracker.type 寫進 workflow.json），再填 `tracker.url`。
    專案原本就有代理名稱（例 csharp-expert）時，放進 `aliases`／`gateAliases` 當過渡期別名。
 2. **`AGENTS.md`**（`AGENTS.md.tpl`）：每個 `{{…}}` 換成實際內容；推不出來、使用者沒答的寫「🟨 待補」。
+   - 「建置、測試與執行指令」節的**相依套件弱點掃描**那一行：依掃描到的套件管理工具填（npm／pnpm／yarn audit、`dotnet list package --vulnerable --include-transitive`、pip-audit、`go run golang.org/x/vuln/cmd/govulncheck`…），
+     寫清楚要不要連網、多久跑一次；專案真的沒有第三方套件才寫「無（理由）」。獨立驗收的委託檔會附它的結果（`hd5-review`）。check-onboard 沒看到會警告。
    - 既有入口檔的**每一條規則**都要有去處：放進 AGENTS.md 對應小節；放不進 8 個小節的（例：收尾工作流細節、派發範本），
      留在原文件並從 AGENTS.md 用一行指過去；已被新版推翻的規則不搬，但要列出來給使用者確認。
    - 寫 **`AI_Service/onboard/rules-migration.md`**（既有規則去向表）：`| 規則 | 原出處（檔:行） | 去向（AGENTS.md 哪一節／留在哪份文件／不搬＋理由） |`，

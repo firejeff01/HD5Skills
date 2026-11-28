@@ -124,6 +124,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <div class="card"><h4>第三方把關</h4><p>開發完成後，交給沒參與開發的 Codex 或全新的子代理唯讀審查，只修會擋人的問題，不無限輪迴。</p></div>
     <div class="card"><h4>回報不灌水</h4><p>每一條主張都要對得上實際跑過的結果，用「已驗證／已完成未驗證／受阻」三種狀態回報，沒驗到的會直接說。效能數字要說得出瓶頸在哪、排除量錯的可能，才算數。</p></div>
     <div class="card"><h4>先想好程式的形狀</h4><p>SA 設計時先定資料形狀、外部輸入在哪裡檢查、重跑會不會出錯，重要的決定列 2～3 個方案並排給你選。實作先刪再加、遷移完不留舊 API，審查者也會看這些。</p></div>
+    <div class="card"><h4>上線後的錯也算帳</h4><p>正式環境才發現的缺陷，會記回當初交付它的案子，跟驗收退回一起統計。哪一關一直漏，數字會說話。</p></div>
+    <div class="card"><h4>密碼不會跟著程式出去</h4><p>送審前自動掃描新增的程式有沒有寫死密碼、金鑰、權杖，也附上套件弱點掃描結果，有問題先修才送審。</p></div>
     <div class="card"><h4>同一個錯不犯第二次</h4><p>錯第二次就做成會擋人的檢查。每條 🔴 紅燈規則都要標明是由哪個守衛在擋，對帳工具會檢查。</p></div>
     <div class="card"><h4>換技術也能用</h4><p>.NET、Node、Python、前後端分離或單一層都適用。工具一律讀 <code>.claude/workflow.json</code>，不寫死資料夾和副檔名。</p></div>
   </div>
@@ -213,6 +215,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <tbody>
       <tr><td>開一張新案子</td><td><span class="say">幫我處理這張工單 &lt;網址&gt;</span><span class="say">我要做一個…功能</span></td><td>讀工單建案、判定路線、照路線派角色</td></tr>
       <tr><td>修一個小 bug</td><td><span class="say">這個按鈕按了沒反應，幫我修</span></td><td>走「小問題」路線：先派 SA 盤查原因和同類位置，再派實作</td></tr>
+      <tr><td>正式環境出 bug</td><td><span class="say">正式站這個功能壞了，是 #123 做的</span></td><td>一樣走小問題路線，SA 會標「逃逸：是，來源 #123」；結案時記回 #123 的退回總帳，看得出是哪一關漏掉</td></tr>
       <tr><td>需求還很模糊</td><td><span class="say">grill 我</span><span class="say">質詢這份設計</span></td><td>把待決事項攤成決策樹，附建議答案一輪一輪問到全部拍板</td></tr>
       <tr><td>實際點點看功能</td><td><span class="say">實際驗一下這個功能</span></td><td>照功能地圖開系統、操作到最終結果、截圖存證</td></tr>
       <tr><td>開發完要審查</td><td><span class="say">送獨立驗收</span></td><td>交給沒參與開發的第三方唯讀審查，總結「通過／不通過／受阻」</td></tr>

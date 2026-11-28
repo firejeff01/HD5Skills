@@ -187,7 +187,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <dl><dt>誰用</dt><dd>主對話寫委託；有 Codex 用 Codex，沒有就派全新的 Claude 子代理（不能 fork）</dd>
     <dt>怎麼叫</dt><dd><span class="say">送獨立驗收</span></dd>
     <dt>產出</dt><dd><code>qa/獨立驗收委託_R{n}.md</code>、<code>qa/{Codex|Claude}驗收結果_R{n}.md</code></dd>
-    <dt>規則</dt><dd>委託只給事實、不給結論。總結只有三種：通過／不通過（P0 n／P1 n／P2 n）／受阻（缺 X）。只修 P1；受阻補齊後重送 R{n}b。除了驗收項目和證據，也審設計品質（防護是否蓋住根因、規則是否散成條件判斷、舊 API 有沒有留著），通常列 P2</dd></dl></article>
+    <dt>規則</dt><dd>委託只給事實、不給結論。總結只有三種：通過／不通過（P0 n／P1 n／P2 n）／受阻（缺 X）。只修 P1；受阻補齊後重送 R{n}b。除了驗收項目和證據，也審設計品質（防護是否蓋住根因、規則是否散成條件判斷、舊 API 有沒有留著），通常列 P2</dd>
+    <dt>資安</dt><dd>寫委託檔前先跑密鑰掃描 <code>check-secrets.mjs --diff</code>，加上相依套件弱點掃描，結果附在委託檔；有發現列 P0，不帶著密鑰送審</dd></dl></article>
 
   <article class="sk p3" id="hd5-onsite-gate"><div class="head"><h3>hd5-onsite-gate</h3><span class="tag">驗收</span><span class="tag auto">自動</span></div>
     <p class="one">站上關卡：部署到測試環境後、通知需求方之前，先確認站上跑的是這一版，再逐條操作到最終結果。</p>
@@ -201,7 +202,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <dl><dt>誰用</dt><dd>主對話；QA 和站上關卡都通過後產出</dd>
     <dt>怎麼叫</dt><dd><span class="say">寫結案報告</span><span class="say">交接</span></dd>
     <dt>產出</dt><dd><code>AI_Service/spec/&lt;案名&gt;/ai-case-report.md</code>；有工單系統時掛到來源工單</dd>
-    <dt>8 節</dt><dd>需求一句話、實際交付的驗收條件、改動範圍、關鍵裁定、測試與驗收結果、未盡事項、引用、給下一張工單的時效驗證</dd></dl></article>
+    <dt>8 節</dt><dd>需求一句話、實際交付的驗收條件、改動範圍、關鍵裁定、測試與驗收結果、未盡事項、引用、給下一張工單的時效驗證</dd>
+    <dt>退回總帳</dt><dd>驗收退回和上線後才發現的缺陷（輪次寫「上線」、記回來源案）都記進 <code>AI_Service/spec/rework-ledger.md</code>，程式寫法類第一次就要有程式守衛</dd></dl></article>
 
   <article class="sk p5" id="hd5-architecture"><div class="head"><h3>hd5-architecture</h3><span class="tag">選配</span><span class="tag user">只有你能叫</span></div>
     <p class="one">架構健檢：從 git 熱點找出淺模組和架構摩擦點，做成候選卡片報告。你選定候選項後，再用質詢輪深挖到可以動工。</p>
@@ -234,6 +236,8 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <tr><td>派發 hook</td><td><code>hooks/grill-gate.ps1</code></td><td>Claude 每次派子代理</td><td>prompt 指到某個案子時，自動呼叫質詢閘；放行也會回一行訊息（看不到＝hook 沒載入）</td></tr>
     <tr><td>主對話改檔 hook</td><td><code>hooks/main-edit-guard.ps1</code></td><td>Claude 主對話每次改檔</td><td>工作分支上有進行中的案子時，主對話改產品程式就擋，並建議該派誰（例外要你同意並寫進 spec_001）</td></tr>
     <tr><td>功能地圖</td><td><code>verify-map-check.ps1</code></td><td>開工、站上關卡、工單閘</td><td>地圖有佔位符、驗收項目對不到功能編號、Pass 沒證據</td></tr>
+    <tr><td>退回總帳</td><td><code>check-rework-ledger.mjs</code></td><td>改待驗收、驗收完成、上傳結案報告（工單閘自動跑）</td><td>退回沒記進 rework-log、5.1 和總帳列數對不上、小問題寫了「逃逸：是」卻沒在總帳記「上線」那一列</td></tr>
+    <tr><td>密鑰掃描</td><td><code>check-secrets.mjs</code></td><td>送獨立驗收前</td><td>diff 新增的行裡有私鑰、雲端金鑰、權杖、寫死的密碼或連線字串密碼（只印遮罩後的片段）</td></tr>
     <tr><td>守衛對帳</td><td><code>check-guard-refs.mjs</code></td><td>每次跑守衛、新增 🔴 規則時</td><td>🔴 規則沒有標「（守衛：…）」</td></tr>
     <tr><td>導入把關</td><td><code>check-onboard.mjs</code>（在 hd5-onboard）</td><td>導入結束時</td><td>分支沒問、有待問題、舊規則沒有去向、產物被 .gitignore 忽略</td></tr>
     <tr><td>工單閘</td><td><code>workitem/_acceptance-gate.ps1</code></td><td>改「待驗收」、上傳結案報告前</td><td>缺獨立驗收結果、缺站上關卡報告、功能地圖不合格、Pass 沒證據</td></tr>

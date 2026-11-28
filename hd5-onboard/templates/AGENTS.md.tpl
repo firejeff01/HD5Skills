@@ -23,6 +23,9 @@
 |---|---|---|---|
 {{指令表：建置、單元測試、整合測試、前端關卡、本機執行；每列寫清楚注意事項（例：會不會寫到共用資料）}}
 
+- 相依套件弱點掃描：{{指令（依套件管理工具，例 npm audit、dotnet list package --vulnerable --include-transitive、pip-audit）、要不要連網、什麼時候跑；專案真的沒有第三方套件寫「無（理由）」}}。獨立驗收的委託檔要附結果（`hd5-review`）。
+- 密鑰掃描：`node {{AI_Service}}/hd5-tools/check-secrets.mjs --diff <起點>..<終點>`（送獨立驗收前跑；只掃新增行，測試用假值在那一行加 `hd5-allow-secret`）。
+
 - 🔴 **先確認測試真的有跑到**：filter／選擇器對不到測試時不會報錯，只會安靜少跑。用實跑結果的數量對上磁碟上的測試數。（守衛：無（少收不報錯是測試工具的行為；專案做了母體檢查腳本就改標那支））
 
 ## 🔴 這個環境會騙你的地方（守衛：無（每列的擋法欄各自標守衛））
@@ -48,7 +51,7 @@
 照 `hd5-workflow` skill：建案判路線（四角色／PM 端已完成／小問題）寫進 `{{AI_Service}}/spec/<案名>/case_spec_content/spec_001.md`，
 照路線派 pm-expert → sa-expert → qa-expert（測試計畫＋Red）→ {{實作代理}}（Green）→ qa-expert（驗證與報告）；主對話不直接改產品程式。
 
-- 關卡工具：`{{AI_Service}}/hd5-tools/`（質詢閘 `validate-grill-gate.ps1`、功能地圖 `verify-map-check.ps1`、守衛對帳 `check-guard-refs.mjs`）
+- 關卡工具：`{{AI_Service}}/hd5-tools/`（質詢閘 `validate-grill-gate.ps1`、功能地圖 `verify-map-check.ps1`、守衛對帳 `check-guard-refs.mjs`、密鑰掃描 `check-secrets.mjs`）
 - Codex 沒有 hook：派發前**一定**先跑質詢閘（每個角色一行，照 workflow.json 的 implementers 逐一列出）：
 {{質詢閘指令表：每列 `pwsh -File {{AI_Service}}/hd5-tools/validate-grill-gate.ps1 -Role <sa、qa、各實作代理的 gateRole> -CasePath {{AI_Service}}/spec/<案名>`，並寫這個角色派給哪個代理}}
 - Codex 擔任 pm／sa／實作／qa 角色時：完整讀 `.claude/agents/<角色>.md` 的本文照做（忽略 frontmatter 的 tools／model，那是 Claude 子代理設定）；
