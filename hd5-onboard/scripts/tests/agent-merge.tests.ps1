@@ -44,13 +44,27 @@ Check '專案刪掉的節：範本沒改 ⇒ 不加回；範本改了 ⇒ 衝突
 Check '專案＝範本的檔 ⇒ 不改、沒衝突' (-not (Merge-AgentSections -Project $tpl -Template $tpl -Base $base).Changed)
 
 Write-Host '--- 沒有基準（舊專案第一次）---'
-$projOld = Doc @("---`nname: api-expert`ndescription: 改過`n---`n`n你是代理。", "## 做法`n`n- 舊做法", "## 熔斷`n`n- 新熔斷", "## 不做`n`n- 專案自訂不做", $stack)
+# 2026-11-28 IMOCore 導入實測：沒有基準時自動插入範本的節，跟專案裡標題不同的同義節重複（例 sa「小問題模式（…）」、qa「第五原則：假訊號」）
+# ⇒ 沒有基準就不插入，改列衝突並點名專案裡標題相近的節；有衝突也不建基準，等 -AcceptAgents 才建（否則下次會把沒插入的節當範本新加的再插進去）
+$projOld = Doc @("---`nname: api-expert`ndescription: 改過`n---`n`n你是代理。", "## 做法`n`n- 舊做法", "## 新的原則（舊寫法）`n`n- 專案自己寫的原則", "## 回顧`n`n- 只跟「回報」共一個字，不該被點名", "## 熔斷`n`n- 新熔斷", "## 不做`n`n- 專案自訂不做", $stack)
 $m6 = Merge-AgentSections -Project $projOld -Template $tpl -Base $null
-Check '沒有基準：缺的節補上、內容同範本的不動' ($m6.Added -contains '## 新原則' -and $m6.Added -contains '## 回報' -and $m6.Updated.Count -eq 0)
-Check '沒有基準：內容不同 ⇒ 衝突；前言不比' (@($m6.Conflicts | ForEach-Object Key) -join '|' -eq '不做' -and $m6.Text -match 'name: api-expert')
-Check '沒有基準：新基準不記衝突的節、前言記範本' ($m6.BaseText -notmatch '舊不做' -and $m6.BaseText -match 'name: x')
+Check '🔴 沒有基準：範本有、專案沒有的節不插入（專案檔不動）' (-not $m6.Changed -and $m6.Added.Count -eq 0 -and $m6.Text -ceq $projOld)
+Check '沒有基準：缺的節與內容不同的節都列衝突（照範本順序）；前言不比' ((@($m6.Conflicts | ForEach-Object Key) -join '|') -eq '新原則|不做|回報' -and $m6.Text -match 'name: api-expert')
+Check '🔴 缺的節點名專案裡標題相近的節（可能是同義節）' (@($m6.Conflicts | Where-Object Key -eq '新原則')[0].Reason -match '專案沒有這一節' -and @($m6.Conflicts | Where-Object Key -eq '新原則')[0].Reason -match '新的原則（舊寫法）')
+Check '缺的節找不到相近的就不亂點名（只共一個字的「回顧」不算）' (@($m6.Conflicts | Where-Object Key -eq '回報')[0].Reason -notmatch '相近|回顧')
+# IMOCore 導入實際撞在一起的三組（範本標題 ← 專案標題），以及不該配對的
+Check 'IMOCore 實例：小問題模式（spec_001…）← 小問題模式（…，2026-11-23）' ((Get-AgentSimilarHeadings '小問題模式（spec_001 路線＝小問題）' @('小問題模式（…，2026-11-23）', '不做')) -contains '小問題模式（…，2026-11-23）')
+Check 'IMOCore 實例：這個環境會給你假訊號 ← 第五原則：假訊號' ((Get-AgentSimilarHeadings '🔴 這個環境會給你假訊號（守衛：無）' @('第五原則：假訊號', '驗島', '開工前')) -contains '第五原則：假訊號')
+Check 'IMOCore 實例：回報（照這個格式）← 回報格式（強制）' ((Get-AgentSimilarHeadings '回報（照這個格式）' @('回報格式（強制）', '熔斷')) -contains '回報格式（強制）')
+Check '不相干的不配：程式設計原則 ↛ 本專案技術架構重點／開工前／做法' (@(Get-AgentSimilarHeadings '程式設計原則' @('本專案技術架構重點', '開工前（每次都做）', '做法', '不做')).Count -eq 0)
+Check '🔴 沒有基準又有衝突 ⇒ 不建基準（BaseText＝空）' ($null -eq $m6.BaseText)
 $m7 = Merge-AgentSections -Project $m6.Text -Template $tpl -Base $m6.BaseText
-Check '第二次（有基準了）：衝突照樣列，原因改成範本新加' ($m7.Conflicts.Count -eq 1 -and $m7.Conflicts[0].Reason -match '同名' -and -not $m7.Changed)
+Check '第二次跑（還是沒有基準）⇒ 照樣只列衝突、不會補插' (-not $m7.Changed -and $m7.Conflicts.Count -eq 3)
+$m8a = Merge-AgentSections -Project $m6.Text -Template $tpl -Base $null -Accept
+$m8b = Merge-AgentSections -Project $m6.Text -Template $tpl -Base $m8a.BaseText
+Check '-Accept 建了基準之後：缺的節當成專案刪掉、不再列衝突也不插入' ($m8b.Conflicts.Count -eq 0 -and -not $m8b.Changed)
+$mClean = Merge-AgentSections -Project ($tpl -replace '（範本預設字）', 'Python 3.12') -Template $tpl -Base $null
+Check '沒有基準但沒有任何衝突 ⇒ 照常建基準' ($mClean.Conflicts.Count -eq 0 -and $mClean.BaseText -ceq $tpl)
 
 Write-Host '--- 真範本：基準＝範本、專案只填了技術架構重點 ⇒ 不動 ---'
 $real = [IO.File]::ReadAllText((Resolve-Path (Join-Path $PSScriptRoot '..\..\templates\agents\backend-expert.template.md')).Path)

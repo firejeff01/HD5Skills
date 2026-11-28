@@ -19,7 +19,7 @@
 
   -Update（已導入過的專案更新套件）：只把套件擁有的檔覆蓋成套件版本——.claude/skills/hd5-*、.agents/skills/hd5-*（hd5-workflow／hd5-workitem
   只放 SKILL.md）、<paths.tools>（以專案 workflow.json 為準）底下的工具；工單工具只在專案 tracker.type＝azure-devops（或帶 -Tracker azure-devops）時更新。
-  代理檔（.claude/agents）以「## 小節」三方比對（基準／新範本／專案現在）：專案沒改過的節自動換成新版、範本新加的節自動插入、
+  代理檔（.claude/agents）以「## 小節」三方比對（基準／新範本／專案現在）：專案沒改過的節自動換成新版、範本新加的節自動插入（沒有基準時不插入、改列衝突並點名標題相近的節）、
   兩邊都改的列進 <aiService>/onboard/agent-update.md 交給 AI 合併；「本專案技術架構重點」永遠不動（規則見 hd5-onboard/scripts/_agent-merge-lib.ps1）。
   合併完用 -AcceptAgents <代理名|all> 把該代理的基準設成目前範本。
   絕不動 AGENTS.md、CLAUDE.md、workflow.json、settings.json（不合併 hook，只檢查兩支有沒有掛）、spec／verify、
@@ -237,7 +237,8 @@ if ($Update) {
         if ($accept) { $agentNotes.Add("$($pr.Agent)：已接受（基準設成目前範本，專案檔不動）") }
         foreach ($n in $m.Notes) { $agentNotes.Add("$($pr.Agent)：$n") }
         foreach ($c in $m.Conflicts) { $agentConflicts.Add([pscustomobject]@{ Agent = $pr.Agent; C = $c }) }
-        [void](& $writeIfDiff $bf $m.BaseText $false)
+        if ($null -ne $m.BaseText) { [void](& $writeIfDiff $bf $m.BaseText $false) }
+        else { $agentNotes.Add("$($pr.Agent)：沒有基準又有衝突，先不建基準（避免下次把沒插入的節當成範本新加的插進去）；合併完跑 -AcceptAgents $($pr.Agent) 才建") }
     }
     $reportRel = "$aiRel/onboard/agent-update.md"; $reportF = Join-Path $proj $reportRel
     if ($agentConflicts.Count) {

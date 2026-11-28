@@ -146,6 +146,8 @@ node <本 skill>/scripts/check-onboard.mjs --project <專案資料夾>
 
 `-Update` 已經把代理檔（`.claude/agents/*.md`）專案沒改過的小節換成新範本、補上範本新加的小節；剩下**專案與範本都改過**
 （或沒有基準可比）的小節列在 `<aiService>/onboard/agent-update.md`，每節附三個版本：基準（上次同步的範本）、專案現在、新範本。
+**沒有基準時（第一次跑）範本有、專案沒有的節不會自動插入**，也列在報告裡，並點名專案裡標題相近的節：那常是專案用別的標題寫的同義節，
+合併時二選一（把範本的新規則併進專案那一節，或改用範本的節並刪掉舊的），不要兩節並存。沒有基準又有衝突時也不建基準，`-AcceptAgents` 之後才建。
 基準存在 `<aiService>/onboard/agent-base/`（要進版控，新 worktree 才比得到）。
 
 1. 讀 `agent-update.md`，一個代理一個代理處理。每一節判斷：
