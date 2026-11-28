@@ -1,0 +1,45 @@
+# HD5Skills 自己的測試（2026-11-28）。只保護套件本身：install.ps1 不會把 .github/ 裝進導入的專案。
+# 同一支 tests/run-all.ps1 分別用 PowerShell 7 與 Windows PowerShell 5.1 跑——
+# 質詢閘、功能地圖檢查、工單工具要相容 5.1（Codex 可能用 5.1），install.ps1 與 hook 只用 pwsh（README「需求」）。
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows（PowerShell 7 ＋ 5.1）
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 測試會在暫存 repo 裡 commit（install、工單閘的密鑰掃描、pre-commit hook）
+      - name: git 身分
+        shell: pwsh
+        run: |
+          git config --global user.email "hd5-ci@users.noreply.github.com"
+          git config --global user.name "hd5-ci"
+
+      - name: PowerShell 7（全部測試＋Node selftest）
+        shell: pwsh
+        run: ./tests/run-all.ps1
+
+      - name: Windows PowerShell 5.1（install 以外的全部測試）
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: ./tests/run-all.ps1

@@ -82,7 +82,8 @@ function New-Proj([string]$name, [string]$json) {
 }
 function Run-Script([string]$file, [hashtable]$h) {
     $r = [pscustomobject]@{ Threw = $false; Msg = ''; Out = '' }
-    try { $r.Out = (& (Join-Path $scripts $file) @h *>&1 | Out-String) } catch { $r.Threw = $true; $r.Msg = $_.Exception.Message }
+    # -Width：5.1 的 Out-String 照主控台寬度折行，路徑長的機器（CI 的 C:\Users\runneradmin\…）會把一行拆開，比對就失準
+    try { $r.Out = (& (Join-Path $scripts $file) @h *>&1 | Out-String -Width 4096) } catch { $r.Threw = $true; $r.Msg = $_.Exception.Message }
     return $r
 }
 $Org = 'https://dev.azure.com/example-org'
@@ -410,7 +411,14 @@ Write-Fixture (Join-Path $auto 'ai-case-report.md') $good
 Write-Fixture (Join-Path $auto 'qa\Codex驗收結果_R1.md') '總結：通過'
 Write-Fixture (Join-Path $auto 'qa\onsite-gate_R1.md') $onsiteOk
 $r = Up $null @{ CaseName = 'cAuto'; VerifyRoot = [IO.Path]::GetFullPath((Join-Path $cPass '..\..\verify')); Upload = $true }
-Check '-CaseName 有、-CasePath 沒給：推 <SpecRoot>/<CaseName>，閘通過就上傳' (-not $r.Threw -and $r.Out -match '由 -CaseName 推得' -and @($global:HD5Net | Where-Object { $_.Method -eq 'Post' }).Count -eq 1)
+$okAuto = (-not $r.Threw -and $r.Out -match '由 -CaseName 推得' -and @($global:HD5Net | Where-Object { $_.Method -eq 'Post' }).Count -eq 1)
+Check '-CaseName 有、-CasePath 沒給：推 <SpecRoot>/<CaseName>，閘通過就上傳' $okAuto
+# 失敗時印出實際狀況（2026-11-28：GitHub 的 Windows PowerShell 5.1 上失敗、本機重現不出來）
+if (-not $okAuto) {
+    Write-Host "       Threw=$($r.Threw) Post=$(@($global:HD5Net | Where-Object { $_.Method -eq 'Post' }).Count) 推得=$($r.Out -match '由 -CaseName 推得')"
+    if ($r.Msg) { Write-Host "       Msg：$($r.Msg)" }
+    ($r.Out -split "`r?`n" | Where-Object { $_ -match '工單閘' } | Select-Object -First 12) | ForEach-Object { Write-Host "       | $_" }
+}
 $r = Up $null @{ ReportPath = (Join-Path $cPass 'ai-case-report.md'); CaseName = 'no-such-case'; Upload = $true }
 Check '-CaseName 推出的資料夾不存在：照樣擋（缺 -CasePath）' ($r.Threw -and $r.Msg -match 'CasePath' -and $global:HD5Net.Count -eq 0)
 $r = Up $cPass @{ Upload = $true }
