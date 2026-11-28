@@ -101,6 +101,18 @@ spec／verify 與 PAT 檔；不刪檔，套件已不含的檔只列出來請你�
 
 ## 測試
 
+一次跑完全部測試（本機與 CI 用同一支；用哪一版 PowerShell 執行，測試就用那一版跑）：
+
+```powershell
+pwsh -File HD5Skills/tests/run-all.ps1                 # PowerShell 7：全部 *.tests.ps1＋Node 工具的 --selftest
+powershell -File HD5Skills/tests/run-all.ps1           # Windows PowerShell 5.1：install 以外的全部測試
+pwsh -File HD5Skills/tests/run-all.ps1 -Filter grill   # 只跑路徑含 grill 的（排錯用）
+```
+
+`run-all.ps1` 自動找版控內的 `*.tests.ps1` 與含 `--selftest` 的 `.mjs`，新加的測試不用改它。GitHub 上每個 PR 與推到 main 都會由 `.github/workflows/tests.yml` 在 Windows 上用 7 與 5.1 各跑一次（只保護套件本身；`install.ps1` 不會把 `.github/` 裝進導入的專案，沒有 CI 的專案照樣手動跑 `run-all.ps1`）。
+
+個別測試：
+
 ```powershell
 & ./HD5Skills/tests/install.tests.ps1                         # 安裝＋導入鏈（暫存 repo）
 node HD5Skills/hd5-onboard/scripts/scan-repo.mjs --selftest
@@ -115,6 +127,7 @@ node HD5Skills/hd5-workflow/tools/check-rework-ledger.mjs --selftest      # 退�
 node HD5Skills/hd5-workflow/tools/check-secrets.mjs --selftest            # 密鑰掃描
 & ./HD5Skills/tests/repo-hygiene.tests.ps1                               # 所有 .ps1 有 BOM、文字檔沒有控制字元（pwsh 與 5.1 都要跑）
 & ./HD5Skills/hd5-workitem/scripts/tests/workitem-ops.tests.ps1           # 工單工具（假 API）；devops-lib.tests.ps1 同
+& ./HD5Skills/hd5-spec-html/scripts/tests/spec-html.tests.ps1            # 需求 HTML 問卷產生／回收
 ```
 
 ## 改套件的規則
