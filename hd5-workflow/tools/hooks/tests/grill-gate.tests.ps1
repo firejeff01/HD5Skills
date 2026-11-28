@@ -110,6 +110,37 @@ $r = Invoke-Hook 'backend-expert' '任務：AI_Service/spec/not-exist-case'
 Check '指到不存在的案子 ⇒ 走舊邏輯（放行）' ($r.Code -eq 0)
 Check '指到不存在的案子：訊息寫明找不到案子資料夾' ($r.Ctx -match 'not-exist-case 但找不到該案子資料夾')
 
+# 2026-11-28 king_wu 回報：工作分支用 worktree（.claude/worktrees/<名>），案子資料夾只在 worktree 裡；session 在 repo 根開
+# ⇒ hook 只看 cwd 找不到案子，掉進舊邏輯（幾乎不擋）。要也找 git worktree 的各個路徑，以及 prompt 裡寫的絕對路徑。
+Write-Host '--- 案子只在 worktree 裡、session 在主 checkout 開（2026-11-28）---'
+$gw = { param([string[]]$a) $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; try { (& git -C $root @a 2>$null) } finally { $ErrorActionPreference = $eap } }
+$null = & $gw @('init', '-q'); $null = & $gw @('config', 'user.email', 't@t'); $null = & $gw @('config', 'user.name', 't'); $null = & $gw @('config', 'core.autocrlf', 'false')
+$null = & $gw @('add', '-A'); $null = & $gw @('commit', '-q', '-m', 'base')
+$wt = Join-Path $root '.claude\worktrees\wt1'
+$null = & $gw @('worktree', 'add', '-q', '-b', 'wt1', $wt)
+$wtCase = Join-Path $wt 'AI_Service\spec\wt-case'
+New-Item -ItemType Directory -Force (Join-Path $wtCase 'case_spec_content'), (Join-Path $wtCase 'sa'), (Join-Path $wtCase 'pm') | Out-Null
+Set-Content (Join-Path $wtCase 'case_spec_content\spec_001.md') "## 5. 驗收條件`n- [ ] x（@功能:f-a）`n`n路線：四角色，高風險：否，外部系統：無，理由：測試" -Encoding UTF8
+Set-Content (Join-Path $wtCase 'pm\grill-x.md') '已拍板' -Encoding UTF8
+Set-Content (Join-Path $wtCase 'sa\grill-x.md') "已拍板`n`n## 設計形狀`n資料形狀：已拍板" -Encoding UTF8
+Check '（前提）主 checkout 沒有這個案子資料夾' (-not (Test-Path (Join-Path $ai 'spec\wt-case')) -and (Test-Path $wtCase))
+$r = Invoke-Hook 'backend-expert' '任務：修 AI_Service/spec/wt-case 的匯入'
+Check '🔴 案子只在 worktree：hook 照樣找到並呼叫 validate-grill-gate（不掉進舊邏輯）' ((Test-PassLine $r 'backend-expert' 'wt-case' '0') -and $r.Ctx -match 'validate-grill-gate 通過')
+Set-Content (Join-Path $wtCase 'sa\grill-x.md') '還在討論' -Encoding UTF8
+$r = Invoke-Hook 'backend-expert' '任務：修 AI_Service/spec/wt-case 的匯入'
+Check '🔴 worktree 裡的案子沒過質詢閘 ⇒ 攔（exit 2）' ($r.Code -eq 2 -and $r.Err -match 'wt-case')
+# prompt 寫了不在任何專案根／worktree 底下的絕對路徑 ⇒ 直接採用
+$other = Join-Path ([IO.Path]::GetTempPath()) ('grillhook_abs_' + [guid]::NewGuid().ToString('N'))
+Copy-Item -Recurse (Join-Path $ai 'verify') (Join-Path $other 'AI_Service\verify')
+$absCase = Join-Path $other 'AI_Service\spec\abs-case'
+New-Item -ItemType Directory -Force (Join-Path $absCase 'case_spec_content'), (Join-Path $absCase 'sa'), (Join-Path $absCase 'pm') | Out-Null
+Set-Content (Join-Path $absCase 'case_spec_content\spec_001.md') "## 5. 驗收條件`n- [ ] x（@功能:f-a）`n`n路線：四角色，高風險：否，外部系統：無，理由：測試" -Encoding UTF8
+Set-Content (Join-Path $absCase 'pm\grill-x.md') '已拍板' -Encoding UTF8
+Set-Content (Join-Path $absCase 'sa\grill-x.md') "已拍板`n`n## 設計形狀`n資料形狀：已拍板" -Encoding UTF8
+$r = Invoke-Hook 'backend-expert' "任務：案子在 $absCase ，照 SA 文件實作"
+Check 'prompt 寫案子的絕對路徑 ⇒ 直接採用、呼叫 validate-grill-gate' ((Test-PassLine $r 'backend-expert' 'abs-case' '0') -and $r.Ctx -match 'validate-grill-gate 通過')
+Remove-Item -LiteralPath $other -Recurse -Force -ErrorAction SilentlyContinue
+
 Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ''
 if ($script:fail) { Write-Host "FAILED: $($script:fail)" -ForegroundColor Red; exit 1 } else { Write-Host 'ALL PASSED' -ForegroundColor Green }

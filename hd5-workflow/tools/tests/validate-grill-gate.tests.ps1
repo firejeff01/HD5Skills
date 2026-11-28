@@ -100,6 +100,14 @@ foreach ($exe in @($selfExe)) {
     $r = RunFile @('-Role', 'sa', '-CasePath', $fc.Case); Check "$tag -File 沒寫外部系統 ⇒ 警告（exit 0）" ((Warned $r '外部系統'))
     Set-Content (Join-Path $fc.Case 'case_spec_content\spec_001.md') "## 5" -Encoding UTF8
     $r = RunFile @('-Role', 'sa', '-CasePath', $fc.Case); Check "$tag -File 沒寫路線 ⇒ exit 8" ($r.Code -eq 8)
+    # 2026-11-28 king_wu 回報：從 Git Bash 用 pwsh -File 跑，stdout 被系統字碼頁（cp950）編碼，中文變亂碼。
+    # 開一個獨立的隱藏主控台（預設字碼頁，不沿用本測試設好的 UTF-8），用 UTF-8 讀 stdout
+    $ec = New-Case "@功能:$existing" 'PM 端已完成'; $cases += $ec
+    New-Item -ItemType Directory -Force (Join-Path $ec.Case 'pm') | Out-Null; Set-Content (Join-Path $ec.Case 'pm\grill-x.md') '質詢輪結束：已拍板' -Encoding UTF8
+    $epsi = New-Object Diagnostics.ProcessStartInfo $exe; $epsi.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$gate`" -Role sa -CasePath `"$($ec.Case)`""
+    $epsi.UseShellExecute = $false; $epsi.CreateNoWindow = $true; $epsi.RedirectStandardOutput = $true; $epsi.RedirectStandardError = $true; $epsi.StandardOutputEncoding = New-Object Text.UTF8Encoding $false
+    $ep = [Diagnostics.Process]::Start($epsi); $eo = $ep.StandardOutput.ReadToEndAsync(); $null = $ep.StandardError.ReadToEnd(); $ep.WaitForExit()
+    Check "$tag -File 在預設字碼頁的主控台跑：stdout 一律 UTF-8（中文路線值不變亂碼）" ($ep.ExitCode -eq 0 -and $eo.Result -match 'route=PM端已完成')
 
     Write-Host "--- $tag 原本的質詢閘行為不變（四角色路線）---"
     $c = New-Case "@功能:$existing`nFeature: x"; $cases += $c
@@ -233,6 +241,14 @@ foreach ($exe in @($selfExe)) {
     Set-Content $sg "Q-01：已拍板`nQ-02 要不要分頁？建議 A [待確認] → 已拍板 A（使用者 11-24）`n待拍板：無`n待拍板 0 題" -Encoding UTF8
     $r = Run @('-Role', 'backend', '-CasePath', $pc.Case, '-VerifyRoot', $realVerify)
     Check "$tag 同一行後面已拍板、「待拍板：無／0 題」總結行 ⇒ pass" ($r.Code -eq 0)
+    # 2026-11-28 king_wu 回報：表格統計列把「待拍板題」與「無」分在兩格，被誤判成待拍板
+    Set-Content $sg "Q-01：已拍板`n`n| # | 項目 | 數量 |`n|---|---|---|`n| 7 | 待拍板題 | 無 |`n| 8 | 待拍板題數 | 0 |`n| 9 | 待拍板項 | 0 項 |" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $pc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 表格統計列（| 待拍板題 | 無 |、| 待拍板題數 | 0 |）⇒ 算總結行、pass" ($r.Code -eq 0 -and $r.Out -match 'pending=0')
+    Set-Content $sg "Q-01：已拍板`n`n| 題號 | 狀態 | 答案 |`n|---|---|---|`n| Q-07 | 待拍板 | 無 |" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $pc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 🔴 表格裡某一題的狀態格寫「待拍板」、答案格寫「無」⇒ 照樣擋（exit 12）" ($r.Code -eq 12)
+    Set-Content $sg "Q-01：已拍板" -Encoding UTF8
     Set-Content (Join-Path $pc.Case 'pm\grill-x.md') "Q-P1 範圍：已拍板`nQ-P2 日期格式：待拍板" -Encoding UTF8
     $r = Run @('-Role', 'frontend', '-CasePath', $pc.Case, '-VerifyRoot', $realVerify)
     Check "$tag 🔴 pm/grill 有待拍板 ⇒ 派實作也擋（exit 12）" ($r.Code -eq 12 -and ($r.Out -replace '\s+', '') -match 'pm/grill-x\.md:2')
