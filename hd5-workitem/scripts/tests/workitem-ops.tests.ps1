@@ -353,7 +353,7 @@ function Run-Ops([object[]]$argv) {
         if ($i + 1 -lt $argv.Count -and -not ([string]$argv[$i + 1]).StartsWith('-')) { $h[$k] = $argv[$i + 1]; $i++ } else { $h[$k] = $true }
     }
     $r = [pscustomobject]@{ Threw = $false; Msg = ''; Out = '' }
-    try { $r.Out = (& $wiOps @h *>&1 | Out-String) } catch { $r.Threw = $true; $r.Msg = $_.Exception.Message }
+    try { $r.Out = (& $wiOps @h *>&1 | Out-String -Width 4096) } catch { $r.Threw = $true; $r.Msg = $_.Exception.Message }
     return $r
 }
 $r = Run-Ops @('99', '-Action', 'update', '-State', '待驗收', '-ConfigStart', $clean)
