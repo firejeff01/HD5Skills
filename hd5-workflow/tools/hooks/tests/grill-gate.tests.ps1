@@ -32,7 +32,7 @@ function New-Case([string]$name, [string]$route, [switch]$WithBugAnalysis, [swit
     New-Item -ItemType Directory -Force (Join-Path $c 'case_spec_content') | Out-Null
     $spec = "## 5. 驗收條件`n- [ ] x（@功能:f-a）"; if ($route) { $spec += "`n`n路線：$route，高風險：否，外部系統：無，理由：測試" }
     Set-Content (Join-Path $c 'case_spec_content\spec_001.md') $spec -Encoding UTF8
-    if ($WithGrill) { New-Item -ItemType Directory -Force (Join-Path $c 'pm'), (Join-Path $c 'sa') | Out-Null; Set-Content (Join-Path $c 'pm\grill-x.md') '已拍板' -Encoding UTF8; Set-Content (Join-Path $c 'sa\grill-x.md') '已拍板' -Encoding UTF8 }
+    if ($WithGrill) { New-Item -ItemType Directory -Force (Join-Path $c 'pm'), (Join-Path $c 'sa') | Out-Null; Set-Content (Join-Path $c 'pm\grill-x.md') '已拍板' -Encoding UTF8; Set-Content (Join-Path $c 'sa\grill-x.md') "已拍板`n`n## 設計形狀`n資料形狀：已拍板" -Encoding UTF8 }
     if ($WithBugAnalysis) { New-Item -ItemType Directory -Force (Join-Path $c 'sa') | Out-Null; Set-Content (Join-Path $c 'sa\bug-analysis.md') "## 原因`na`n## 影響範圍`nb`n## 同類位置`nc`n## 修法`nd`n## 待決事項`n待決事項：無" -Encoding UTF8 }
 }
 New-Case 'full-ok' '四角色' -WithGrill

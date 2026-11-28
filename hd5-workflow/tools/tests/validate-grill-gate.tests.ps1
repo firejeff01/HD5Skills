@@ -47,7 +47,7 @@ function New-Case([string]$featureText, [string]$route = '四角色') {
     $case = Join-Path $root 'AI_Service\spec\case-x'
     New-Item -ItemType Directory -Force (Join-Path $case 'pm'), (Join-Path $case 'sa'), (Join-Path $case 'case_spec_content') | Out-Null
     Set-Content (Join-Path $case 'pm\grill-x.md') '質詢輪結束：已拍板' -Encoding UTF8
-    Set-Content (Join-Path $case 'sa\grill-x.md') '質詢輪結束：已拍板' -Encoding UTF8
+    Set-Content (Join-Path $case 'sa\grill-x.md') "質詢輪結束：已拍板`n`n## 設計形狀`n資料形狀：狀態用列舉（已拍板）" -Encoding UTF8
     $spec = "## 5. 驗收條件`n- [ ] x"
     if ($route) { $spec += "`n`n路線：$route，高風險：否，外部系統：無，理由：測試" }
     Set-Content (Join-Path $case 'case_spec_content\spec_001.md') $spec -Encoding UTF8
@@ -324,6 +324,29 @@ foreach ($exe in @($selfExe)) {
     Set-Content (Join-Path $wc.Case 'pm\grill-x.md') '質詢輪結束：已拍板' -Encoding UTF8
     $r = Run @('-Role', 'backend', '-CasePath', $wc.Case, '-SkipRoute', '舊案', '-Skip', '-VerifyRoot', $realVerify)
     Check "$tag 舊案 -SkipRoute＋-Skip ⇒ 驗收回合閘一起跳過（同 exit 12）" ($r.Code -eq 0)
+
+    Write-Host "--- $tag SA 的設計形狀小節（2026-11-28，只警告）---"
+    $dc = New-Case "@功能:$existing"; $cases += $dc
+    $r = Run @('-Role', 'backend', '-CasePath', $dc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag sa/grill 有收斂的「設計形狀」小節 ⇒ pass、沒警告（design-shape=ok）" ($r.Code -eq 0 -and $r.Out -match 'design-shape=ok' -and $r.Out -notmatch 'grill-gate 警告')
+    Set-Content (Join-Path $dc.Case 'sa\grill-x.md') '質詢輪結束：已拍板' -Encoding UTF8
+    $r = Run @('-Role', 'qa', '-CasePath', $dc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 🔴 sa/grill 沒有「設計形狀」小節 ⇒ 派實作／QA 印警告、不擋（exit 0）" ((Warned $r '設計形狀') -and $r.Out -match 'GRILL_GATE=pass')
+    Set-Content (Join-Path $dc.Case 'sa\grill-x.md') "質詢輪結束：已拍板`n`n## 設計形狀`n（還沒寫）`n`n## 其他`n已拍板" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $dc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 設計形狀小節沒有終止標記（標記在別節不算）⇒ 警告並點名檔:行" ((Warned $r '設計形狀') -and ($r.Out -replace '\s+', '') -match 'sa/grill-x\.md:3')
+    Set-Content (Join-Path $dc.Case 'sa\grill-x.md') "質詢輪結束：已拍板`n`n### 第十分支：設計形狀`n- 冪等：N/A－唯讀查詢`n- 共用狀態：N/A－單一請求" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $dc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 設計形狀小節全寫 N/A－理由 ⇒ 算收斂、沒警告" ($r.Code -eq 0 -and $r.Out -notmatch 'grill-gate 警告')
+    Set-Content (Join-Path $dc.Case 'sa\grill-x.md') '質詢輪結束：已拍板' -Encoding UTF8
+    $r = Run @('-Role', 'sa', '-CasePath', $dc.Case)
+    Check "$tag 派 SA 不看設計形狀（那是 SA 自己要寫的）" ($r.Code -eq 0 -and $r.Out -notmatch '設計形狀')
+    $r = Run @('-Role', 'backend', '-CasePath', $dc.Case, '-SkipRoute', '舊案', '-Skip', '-VerifyRoot', $realVerify)
+    Check "$tag 舊案 -SkipRoute＋-Skip ⇒ 不看設計形狀" ($r.Code -eq 0 -and $r.Out -notmatch '設計形狀')
+    $bc = New-BugCase '' $fullAnalysis; $cases += $bc
+    Add-Content (Join-Path $bc.Case 'sa\bug-analysis.md') "`n@功能:$existing" -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $bc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 小問題路線不要求設計形狀" ($r.Code -eq 0 -and $r.Out -notmatch '設計形狀')
 
     $r = Run @('-Role', 'backend', '-CasePath', $c.Case)
     Check "$tag 不帶 -VerifyRoot：預設找 CasePath 往上兩層的 verify/（暫存 case 沒有 ⇒ exit 6）" ($r.Code -eq 6)

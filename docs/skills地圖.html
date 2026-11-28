@@ -160,7 +160,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <dt>怎麼叫</dt><dd><span class="say">grill 我</span><span class="say">質詢這份設計</span></dd>
     <dt>產出</dt><dd><code>&lt;角色目錄&gt;/grill-{主題}.md</code>（拍板紀錄，效力等同需求答覆）；可沉澱 <code>CONTEXT.md</code> 詞彙表、<code>docs/adr/</code></dd>
     <dt>重點</dt><dd>八個標準分支，外部系統案另加第九分支；SA 另加第十分支「設計形狀」：資料形狀、領域規則放哪、邊界、冪等、共用狀態、重新設計還是接上去，重要決定列 2～3 個方案並排比較</dd>
-    <dt>把關</dt><dd>質詢閘 <code>validate-grill-gate.ps1</code>：質詢紀錄沒收斂，就不准派下一個角色</dd></dl></article>
+    <dt>把關</dt><dd>質詢閘 <code>validate-grill-gate.ps1</code>：質詢紀錄沒收斂，就不准派下一個角色；SA 的紀錄沒有「設計形狀」小節只警告、不擋</dd></dl></article>
 
   <article class="sk p1" id="hd5-no-hallucination"><div class="head"><h3>hd5-no-hallucination</h3><span class="tag">全程</span><span class="tag auto">自動</span></div>
     <p class="one">文件沒定義的事不腦補，改列問題清單。格式固定，每題附建議答案，跨輪用同一套 Q 編號。</p>
@@ -176,7 +176,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <dt>重點</dt><dd>實作不准改 QA 的測試；跑之前先確認測試母體真的收得到東西（少跑不會報錯）</dd></dl></article>
 
   <article class="sk p2" id="hd5-verify"><div class="head"><h3>hd5-verify</h3><span class="tag">全程</span><span class="tag auto">自動</span></div>
-    <p class="one">像使用者一樣驗證：照功能地圖把系統開起來，走真實使用者的路徑操作到最終結果，留證據、清理。也規定回報的寫法。</p>
+    <p class="one">像使用者一樣驗證：照功能地圖把系統開起來，走真實使用者的路徑操作到最終結果，留證據、清理。也規定回報的寫法；效能類數字要先說出瓶頸、排除量到別的東西，才能回報。</p>
     <dl><dt>誰用</dt><dd>所有角色</dd>
     <dt>何時</dt><dd>開工前、每完成一條驗收條件、獨立驗收核對證據、站上關卡、回報進度時</dd>
     <dt>產出</dt><dd><code>AI_Service/verify/features/&lt;編號&gt;.md</code>（功能地圖）、證據檔</dd>
@@ -217,7 +217,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
   <thead><tr><th>角色</th><th>代理</th><th>做什麼</th><th>主要用到的 skill</th></tr></thead>
   <tbody>
     <tr><td>主對話</td><td>（你正在對話的那個 AI）</td><td>建案、判路線、派角色、把待決事項一題一題問你、合併、站上關卡、結案。<strong>不直接改產品程式</strong>；大量讀取交給子代理，只收摘要</td><td>workflow、workitem、review、onsite-gate、case-report</td></tr>
-    <tr><td>PM</td><td><code>pm-expert</code></td><td>需求分析、驗收條件、質詢輪</td><td>grill、spec-html、no-hallucination</td></tr>
+    <tr><td>PM</td><td><code>pm-expert</code></td><td>需求分析、驗收條件、質詢輪；體驗優先：寫出載入中／沒資料／失敗時的狀態，範圍太大時請 PO 決定先做哪幾項</td><td>grill、spec-html、no-hallucination</td></tr>
     <tr><td>SA</td><td><code>sa-expert</code></td><td>掃描專案、技術設計；小問題路線改做盤查，寫 <code>sa/bug-analysis.md</code>；設計質詢含「設計形狀」分支</td><td>grill、no-hallucination、verify</td></tr>
     <tr><td>實作</td><td><code>workflow.json</code> 的 implementers（預設 <code>backend-expert</code>／<code>frontend-expert</code>）</td><td>TDD 加驗紅；修之前先列出同類位置；照代理檔的「程式設計原則」寫（先刪再加、檢查放邊界、不留舊 API）</td><td>tdd、verify</td></tr>
     <tr><td>QA</td><td><code>qa-expert</code></td><td>實作前先交測試計畫與會失敗的測試（Red）；實作後對照每個情境讀測試程式、測試報告、資安（順序：QA → 實作 → QA）</td><td>tdd、verify</td></tr>
