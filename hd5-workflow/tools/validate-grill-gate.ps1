@@ -426,6 +426,12 @@ if ($isDownstream) {
     }
 }
 
-foreach ($w in $gateWarnings) { Write-Output "grill-gate 警告：$w" }
+# 警告摘要（2026-11-28）：警告種類變多，放行訊息一長就容易被略過 ⇒ 先一行摘要（幾項、哪幾類），再逐項編號
+if ($gateWarnings.Count) {
+    $kinds = @($gateWarnings | ForEach-Object { ($_ -split '：', 2)[0] } | Select-Object -Unique)
+    Write-Output "grill-gate 警告摘要：共 $($gateWarnings.Count) 項（$($kinds -join '、')）——不擋，但每項都要處理或跟使用者說明，不要略過"
+    $i = 0
+    foreach ($w in $gateWarnings) { $i++; Write-Output "grill-gate 警告：[$i/$($gateWarnings.Count)] $w" }
+}
 Write-Output "GRILL_GATE=pass role=$Role $routeNote $grillNote$riskNote$featureNote"
 exit 0

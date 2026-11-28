@@ -92,6 +92,9 @@ PAT 檔＝一行 PAT（`#` 開頭與空白行略過），範本 `pat.local.examp
 3. **功能地圖合格**：`<paths.aiService>/verify/`（或 `-VerifyRoot`）用功能地圖檢查器 `Test-VerifyMap` 檢查（`hd5-verify` 規格）。
 4. **A 表對到功能、Pass 有證據**：站上關卡報告的 `## A. 驗收項目` 每條「功能」欄對到功能地圖編號、Pass 有證據檔（檔案要真的在 `onsite-gate_R{n}/` 或 `qa/`）或內嵌 `查詢：`／`API：`／`畫面值：`。
 5. **檢查器找不到就 fail closed**：功能地圖檢查器位置＝`-ToolsDir` → workflow.json 的 `paths.tools` → 腳本資料夾的上一層；找不到 `_verify-map-lib.ps1` 就擋並列出找過的路徑，不會默默略過。
+6. **密鑰掃描**（2026-11-28）：取最新一輪 `qa/獨立驗收委託_R{n}[b].md` 裡寫的受驗範圍 `git diff <起點>..<終點>`，用 `check-secrets.mjs` 掃那段 diff 的新增行；
+   有疑似密鑰就擋（只印遮罩片段，確定是測試假值才在那一行加 `hd5-allow-secret`）。案子不在 git repo 裡就略過（只印一行）；
+   在 git repo 裡但找不到委託檔、委託檔沒寫範圍、範圍的 commit 不在本機、找不到 `check-secrets.mjs` 或 node ⇒ 擋（fail closed）。
 
 - 沒給 `-CasePath` ⇒ 擋（提示用 `-SkipAcceptanceGate "<理由>"` 的條件）。上傳的預覽模式例外：只印「正式上傳會被擋」。
 - 預覽（`workitem-ops.ps1 -WhatIfOnly`；上傳沒帶 `-Upload` 或帶了 `-WhatIfOnly`）時工單閘沒過只印紅字「正式執行會被擋」與原因，讓使用者先看到；正式執行一定擋。

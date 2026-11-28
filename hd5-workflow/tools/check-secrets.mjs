@@ -134,6 +134,7 @@ export function selftest() {
   { const x = run(['--files', f1, f2]); ok('CLI --files：有密鑰 ⇒ exit 1、點名 bad.json:2、不印原文', x.code === 1 && /bad\.json:2 連線字串密碼/.test(x.out) && !/RealOne42/.test(x.out)) }
   { const x = run(['--files', f2]); ok('CLI --files：只有佔位 ⇒ exit 0', x.code === 0) }
   { const x = run([]); ok('CLI 沒給模式 ⇒ exit 2', x.code === 2) }
+  { const x = run(['--diff', 'nope1..nope2', '--root', t]); ok('CLI --diff 範圍不存在／不是 git repo ⇒ exit 2、說明原因（不是當機）', x.code === 2 && /git .*失敗/.test(x.out)) }
   rmSync(t, { recursive: true, force: true })
   console.log(fail ? `selftest FAILED: ${fail}` : 'selftest ALL PASSED')
   return fail ? 1 : 0
@@ -144,7 +145,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const arg = n => { const i = a.indexOf(n); return i >= 0 ? a[i + 1] : undefined }
   if (a.includes('--selftest')) process.exit(selftest())
   const root = resolve(arg('--root') || '.')
-  const git = args => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+  const git = args => {
+    try { return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }) }
+    catch (e) { console.log(`❌ 密鑰掃描：git ${args.slice(-1)[0]} 失敗（${String(e.stderr || e.message).trim().split('\n')[0]}）——範圍寫錯、commit 不在本機，或不是 git repo`); process.exit(2) }
+  }
   if (a.includes('--files')) {
     const files = a.slice(a.indexOf('--files') + 1).filter(x => !x.startsWith('--'))
     const hits = []

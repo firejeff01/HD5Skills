@@ -348,7 +348,19 @@ foreach ($exe in @($selfExe)) {
     $r = Run @('-Role', 'backend', '-CasePath', $bc.Case, '-VerifyRoot', $realVerify)
     Check "$tag 小問題路線不要求設計形狀" ($r.Code -eq 0 -and $r.Out -notmatch '設計形狀')
 
+    Write-Host "--- $tag 警告摘要與編號（2026-11-28）---"
+    $wsc = New-Case "@功能:$existing"; $cases += $wsc
+    Set-Content (Join-Path $wsc.Case 'case_spec_content\spec_001.md') "路線：四角色，高風險：否，理由：沒寫外部系統" -Encoding UTF8
+    Set-Content (Join-Path $wsc.Case 'sa\grill-x.md') '質詢輪結束：已拍板' -Encoding UTF8
+    $r = Run @('-Role', 'backend', '-CasePath', $wsc.Case, '-VerifyRoot', $realVerify)
+    $wl = @($r.Out -split "`r?`n" | Where-Object { $_ -match 'grill-gate 警告' })
+    Check "$tag 兩項警告 ⇒ 第一行是摘要（共 2 項、列出類別），各項編號 [1/2]、[2/2]、exit 0" ($r.Code -eq 0 -and $wl.Count -eq 3 -and $wl[0] -match '警告摘要：共 2 項（外部系統、設計形狀）' -and $wl[1] -match '\[1/2\] 外部系統' -and $wl[2] -match '\[2/2\] 設計形狀')
+    $nwc = New-Case "@功能:$existing"; $cases += $nwc
+    $r = Run @('-Role', 'backend', '-CasePath', $nwc.Case, '-VerifyRoot', $realVerify)
+    Check "$tag 沒有警告 ⇒ 不印摘要" ($r.Out -notmatch '警告摘要')
+
     Write-Host "--- $tag 小問題的逃逸標記（2026-11-28，只警告）---"
+    $r = Run @('-Role', 'backend', '-CasePath', $bc.Case, '-VerifyRoot', $realVerify)
     Check "$tag 🔴 bug-analysis 沒寫「逃逸：」⇒ 派實作印警告、不擋（exit 0）" ((Warned $r '逃逸') -and $r.Out -match 'GRILL_GATE=pass')
     $ba = Join-Path $bc.Case 'sa\bug-analysis.md'; $baText = [IO.File]::ReadAllText($ba)
     [IO.File]::WriteAllText($ba, $baText + "`n**逃逸**：是（正式環境回報）`n", [Text.UTF8Encoding]::new($false))

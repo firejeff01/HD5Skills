@@ -124,7 +124,8 @@ if ($caseMatch.Success) {
             if ($code -eq 0) {
                 $passLine = @($gateOut -split "`r?`n" | Where-Object { $_ -match 'GRILL_GATE=pass' } | Select-Object -First 1)
                 # 2026-11-25：閘的警告（不擋）逐行帶進放行訊息，主對話才看得到
-                $warnLines = @($gateOut -split "`r?`n" | Where-Object { $_ -match '^\s*grill-gate 警告：' } | ForEach-Object { $_.Trim() })
+                # 2026-11-28：摘要行（grill-gate 警告摘要：共 N 項…）排第一，再接編號的各項
+                $warnLines = @($gateOut -split "`r?`n" | Where-Object { $_ -match '^\s*grill-gate 警告(摘要)?：' } | ForEach-Object { $_.Trim() })
                 Pass "validate-grill-gate 通過$(if ($passLine) { "（$($passLine[0].Trim())）" })" $agentType $caseName '0' $warnLines
             }
             if ($null -eq $code) {
