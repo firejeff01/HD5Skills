@@ -131,7 +131,7 @@ New-Item -ItemType Directory -Force (Join-Path $p '.claude/skills/hd5-obsolete')
 $x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-SkipTests')
 if ($x.Code -ne 0) { Write-Host "    （-Update 輸出最後 15 行，exit=$($x.Code)）"; ($x.Out.Trim() -split "`n" | Select-Object -Last 15) | ForEach-Object { Write-Host "    | $_" } }
 Check '-Update 成功、被改過的 hd5 skill／工具檔覆蓋回套件版本（摘要：更新 4 個檔）' ($x.Code -eq 0 -and $x.Out -match '更新完成' -and $x.Out -match '更新 4 個檔' -and @($mod.Keys | Where-Object { SameBytes (Join-Path $p $_) (Join-Path $kit $mod[$_]) }).Count -eq 4)
-Check '-Update 不動代理、workflow.json、settings.json、AGENTS.md、CLAUDE.md（位元組不變）' (@($keep | Where-Object { [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $p $_))) -eq $snap[$_] }).Count -eq $keep.Count)
+Check '-Update 不動 workflow.json、settings.json、AGENTS.md、CLAUDE.md；代理只填了技術架構重點 ⇒ 也不動（位元組不變）' (@($keep | Where-Object { [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $p $_))) -eq $snap[$_] }).Count -eq $keep.Count)
 Check '-Update 保留 PAT 檔、不列它' ([IO.File]::ReadAllText((Join-Path $p 'AI_Service/hd5-tools/pat.local.txt')) -eq 'secret-pat' -and $x.Out -notmatch 'pat\.local\.txt')
 Check '-Update 列出套件已不含的檔與 skill、不刪' ($x.Out -match '套件已不含' -and $x.Out -match 'AI_Service/hd5-tools/old-tool\.ps1' -and $x.Out -match '\.claude/skills/hd5-obsolete/' -and (Test-Path (Join-Path $p 'AI_Service/hd5-tools/old-tool.ps1')) -and (Test-Path (Join-Path $p '.claude/skills/hd5-obsolete/SKILL.md')))
 Check 'tracker 不是 azure-devops ⇒ -Update 不裝工單工具' (-not (Test-Path (Join-Path $p 'AI_Service/hd5-tools/workitem')) -and -not (Test-Path (Join-Path $p '.claude/skills/hd5-workitem')))
@@ -165,6 +165,47 @@ $r5 = New-Repo
 $x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r5, '-Update', '-SkipTests')
 Check '沒導入過 ⇒ -Update 報錯、請改用一般安裝' ($x.Code -ne 0 -and $x.Out -match '還沒導入 HD5Skills' -and -not (Test-Path (Join-Path $r5 '.claude')))
 Remove-Item -LiteralPath $r5 -Recurse -Force -ErrorAction SilentlyContinue
+
+Write-Host '--- -Update：代理檔三方比對（11-28 使用者拍板）---'
+$ab = Join-Path $p 'AI_Service/onboard/agent-base'
+Check '一般安裝把新建代理用的範本存成基準' (SameBytes (Join-Path $ab 'templates/backend-expert.template.md') (Join-Path $kit 'hd5-onboard/templates/agents/backend-expert.template.md') -and (Test-Path (Join-Path $ab 'templates/sa-expert.md')))
+. (Join-Path $kit 'hd5-onboard/scripts/_agent-merge-lib.ps1')
+function Set-Sec([string]$text, [string]$key, $newText) {   # $newText＝$null ⇒ 拿掉這一節
+    $out = foreach ($s in (Split-AgentSections $text)) { if ($s.Key -ne $key) { $s.Text } elseif ($null -ne $newText) { $newText } }
+    (@($out | Where-Object { $_ }) -join "`n`n") + "`n" }
+function Get-Sec([string]$text, [string]$key) { @((Split-AgentSections $text) | Where-Object Key -eq $key)[0].Text }
+# 模擬「用舊版套件導入」的 backend-expert：舊版範本沒有「程式設計原則」、熔斷是舊寫法；專案自己改過「回報」，新版範本也改了「回報」
+$beF = Join-Path $p '.claude/agents/backend-expert.md'; $beTplF = Join-Path $kit 'hd5-onboard/templates/agents/backend-expert.template.md'
+$oldTpl = [IO.File]::ReadAllText($beTplF); $oldTpl = Set-Sec $oldTpl '程式設計原則' $null; $oldTpl = Set-Sec $oldTpl '熔斷' "## 熔斷`n`n舊的熔斷寫法。"; $oldTpl = Set-Sec $oldTpl '回報（照這個格式）' "## 回報（照這個格式）`n`n舊的回報格式。"
+Remove-Item -LiteralPath (Join-Path $ab 'agents/backend-expert.md') -ErrorAction SilentlyContinue
+[IO.File]::WriteAllText((Join-Path $ab 'templates/backend-expert.template.md'), $oldTpl, [Text.UTF8Encoding]::new($false))
+$cur = [IO.File]::ReadAllText($beF); $cur = Set-Sec $cur '程式設計原則' $null; $cur = Set-Sec $cur '熔斷' "## 熔斷`n`n舊的熔斷寫法。"; $cur = Set-Sec $cur '回報（照這個格式）' "## 回報（照這個格式）`n`n專案自己的回報格式。"
+[IO.File]::WriteAllText($beF, $cur, [Text.UTF8Encoding]::new($false))
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-SkipTests')
+$be = [IO.File]::ReadAllText($beF); $rep = Join-Path $p 'AI_Service/onboard/agent-update.md'
+if ($x.Code -ne 0) { Write-Host "    （輸出最後 15 行）"; ($x.Out.Trim() -split "`n" | Select-Object -Last 15) | ForEach-Object { Write-Host "    | $_" } }
+Check '新範本多的節自動補上（接在「做法」後面）' ($x.Code -eq 0 -and ((@((Split-AgentSections $be) | ForEach-Object Key)) -join '|') -match '\|做法\|程式設計原則\|不做\|' -and $x.Out -match '新增 ## 程式設計原則')
+Check '專案沒改過、範本改了 ⇒ 自動換成新版' ((Get-AgentNorm (Get-Sec $be '熔斷')) -ceq (Get-AgentNorm (Get-Sec ([IO.File]::ReadAllText($beTplF)) '熔斷')) -and $be -notmatch '舊的熔斷寫法')
+Check '兩邊都改 ⇒ 不動專案、列進 agent-update.md（附 -AcceptAgents 指令）' ($be -match '專案自己的回報格式' -and $x.Out -match '待合併衝突 1 節' -and (Test-Path $rep) -and [IO.File]::ReadAllText($rep) -match '## 回報（照這個格式）：專案與範本都改過' -and [IO.File]::ReadAllText($rep) -match '-AcceptAgents')
+Check '「本專案技術架構重點」不動' ($be -match 'Python 3\.12＋FastAPI')
+Check '代理的新基準寫在 agent-base/agents/' ((Test-Path (Join-Path $ab 'agents/backend-expert.md')) -and [IO.File]::ReadAllText((Join-Path $ab 'agents/backend-expert.md')) -match '舊的回報格式')
+$beBytes = [IO.File]::ReadAllBytes($beF)
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-SkipTests')
+Check '再跑 -Update ⇒ 代理檔不變、衝突照樣列' ($x.Code -eq 0 -and [Linq.Enumerable]::SequenceEqual([byte[]]$beBytes, [byte[]][IO.File]::ReadAllBytes($beF)) -and $x.Out -match '待合併衝突 1 節')
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-AcceptAgents', 'backend-expert', '-SkipTests')
+Check '-AcceptAgents ⇒ 代理檔不動、衝突清空、報告改成沒有衝突' ($x.Code -eq 0 -and [Linq.Enumerable]::SequenceEqual([byte[]]$beBytes, [byte[]][IO.File]::ReadAllBytes($beF)) -and $x.Out -match '待合併衝突 0 節' -and [IO.File]::ReadAllText($rep) -match '沒有待合併的衝突')
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-SkipTests')
+Check '接受後再跑 ⇒ 沒有衝突、專案的回報保留' ($x.Code -eq 0 -and $x.Out -match '待合併衝突 0 節' -and [IO.File]::ReadAllText($beF) -match '專案自己的回報格式')
+# 沒有基準的舊專案（本功能上線前導入）：frontend-expert 刪掉基準、少一節、改過一節、CRLF
+$feF = Join-Path $p '.claude/agents/frontend-expert.md'
+Remove-Item -LiteralPath (Join-Path $ab 'agents/frontend-expert.md'), (Join-Path $ab 'templates/frontend-expert.template.md') -ErrorAction SilentlyContinue
+$cur = [IO.File]::ReadAllText($feF); $cur = Set-Sec $cur '程式設計原則' $null; $cur = Set-Sec $cur '不做' "## 不做`n`n- 專案自己的不做清單"
+[IO.File]::WriteAllText($feF, $cur.Replace("`n", "`r`n"), [Text.UTF8Encoding]::new($false))
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-Update', '-SkipTests')
+$fe = [IO.File]::ReadAllText($feF)
+Check '沒有基準：缺的節補上、內容不同的列衝突、保留 CRLF' ($x.Code -eq 0 -and $fe -match '## 程式設計原則' -and $fe -match '專案自己的不做清單' -and $fe -notmatch '(?<!\r)\n' -and $x.Out -match '待合併衝突 1 節' -and [IO.File]::ReadAllText($rep) -match 'frontend-expert' -and [IO.File]::ReadAllText($rep) -match '沒有基準可比')
+$x = Run (Join-Path $kit 'install.ps1') @('-RepoRoot', $r, '-ProjectDir', 'app', '-AcceptAgents', 'all', '-SkipTests')
+Check '-AcceptAgents 沒帶 -Update ⇒ 報錯' ($x.Code -ne 0 -and $x.Out -match '只能跟 -Update 一起用')
 
 Write-Host '--- 安裝到 repo 根 ---'
 $r2 = New-Repo

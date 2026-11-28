@@ -27,12 +27,26 @@
 
 ## 之後更新套件
 
-已導入過的專案，套件出新版時用 `-Update`：只把套件擁有的檔（`.claude/skills/hd5-*`、`.agents/skills/hd5-*`、`paths.tools` 底下的工具；
-工單工具只在 `tracker.type`＝azure-devops 時）覆蓋成新版，**不動** AGENTS.md、CLAUDE.md、`.claude/agents`、`workflow.json`、`settings.json`、
-spec／verify／onboard 與 PAT 檔；不刪檔，套件已不含的檔只列出來請你確認。
+已導入過的專案，套件出新版時用 `-Update`：把套件擁有的檔（`.claude/skills/hd5-*`、`.agents/skills/hd5-*`、`paths.tools` 底下的工具；
+工單工具只在 `tracker.type`＝azure-devops 時）覆蓋成新版，**不動** AGENTS.md、CLAUDE.md、`workflow.json`、`settings.json`、
+spec／verify 與 PAT 檔；不刪檔，套件已不含的檔只列出來請你確認。
+
+**代理檔（`.claude/agents/`）以「## 小節」三方比對**（2026-11-28）：基準（上次同步的範本，存在 `AI_Service/onboard/agent-base/`，要進版控）／新範本／專案現在。
+
+| 情況 | 處理 |
+|---|---|
+| 範本新加的節，專案沒有 | 自動插入（接在範本裡前一節的後面） |
+| 範本改了，專案沒改過 | 自動換成新版 |
+| 專案改過，範本沒改 | 保留專案的 |
+| 兩邊都改了，或沒有基準可比（本功能上線前導入的專案第一次跑） | 不動，列進 `AI_Service/onboard/agent-update.md` |
+| 「本專案技術架構重點」 | 永遠不動 |
+
+有衝突時，在專案啟動 Claude Code 說「更新代理」（`hd5-onboard` 第 7 節）：AI 逐節合併、你同意才寫入，某個代理合併完再跑 `-AcceptAgents <代理名>`。
+實作代理靠 `workflow.json` 的 `gateRole`（backend／frontend）對到範本；其他 gateRole 不比對，只列提醒。
 
 ```powershell
 & ./HD5Skills/install.ps1 -RepoRoot D:\work\MyRepo [-ProjectDir src\MyApp] -Update
+& ./HD5Skills/install.ps1 -RepoRoot D:\work\MyRepo [-ProjectDir src\MyApp] -Update -AcceptAgents sa-expert   # 合併完 sa-expert 的衝突後
 ```
 
 ## 技能清單
@@ -87,6 +101,7 @@ spec／verify／onboard 與 PAT 檔；不刪檔，套件已不含的檔只列出
 & ./HD5Skills/tests/install.tests.ps1                         # 安裝＋導入鏈（暫存 repo）
 node HD5Skills/hd5-onboard/scripts/scan-repo.mjs --selftest
 node HD5Skills/hd5-onboard/scripts/check-onboard.mjs --selftest
+& ./HD5Skills/hd5-onboard/scripts/tests/agent-merge.tests.ps1      # 代理檔三方比對（-Update）
 & ./HD5Skills/hd5-workflow/tools/tests/validate-grill-gate.tests.ps1
 & ./HD5Skills/hd5-workflow/tools/tests/verify-map.tests.ps1         # 功能地圖檢查器（佔位符判定等）
 & ./HD5Skills/hd5-workflow/tools/hooks/tests/grill-gate.tests.ps1

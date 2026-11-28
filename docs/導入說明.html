@@ -123,6 +123,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <div class="card"><h4>像使用者一樣驗</h4><p>每個功能都有一份「功能地圖」，寫清楚從哪裡進去、按什麼、成功長怎樣。驗收要實際操作到最終結果，並留下證據。</p></div>
     <div class="card"><h4>第三方把關</h4><p>開發完成後，交給沒參與開發的 Codex 或全新的子代理唯讀審查，只修會擋人的問題，不無限輪迴。</p></div>
     <div class="card"><h4>回報不灌水</h4><p>每一條主張都要對得上實際跑過的結果，用「已驗證／已完成未驗證／受阻」三種狀態回報，沒驗到的會直接說。</p></div>
+    <div class="card"><h4>先想好程式的形狀</h4><p>SA 設計時先定資料形狀、外部輸入在哪裡檢查、重跑會不會出錯，重要的決定列 2～3 個方案並排給你選。實作先刪再加、遷移完不留舊 API，審查者也會看這些。</p></div>
     <div class="card"><h4>同一個錯不犯第二次</h4><p>錯第二次就做成會擋人的檢查。每條 🔴 紅燈規則都要標明是由哪個守衛在擋，對帳工具會檢查。</p></div>
     <div class="card"><h4>換技術也能用</h4><p>.NET、Node、Python、前後端分離或單一層都適用。工具一律讀 <code>.claude/workflow.json</code>，不寫死資料夾和副檔名。</p></div>
   </div>
@@ -185,7 +186,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
     <tbody>
       <tr><td><code>AGENTS.md</code></td><td><strong>主檔</strong>：這個專案的技術架構、建置和測試指令、環境陷阱、協作規則。Claude 和 Codex 都讀</td><td>專案（你可以改）</td></tr>
       <tr><td><code>CLAUDE.md</code></td><td>第一行是 <code>@AGENTS.md</code>（載入主檔），下面只放 Claude 專屬的設定</td><td>專案</td></tr>
-      <tr><td><code>.claude/agents/</code></td><td>角色定義：pm／sa／qa-expert 和實作代理（例 backend／frontend-expert），最後一節寫本專案的技術重點</td><td>專案</td></tr>
+      <tr><td><code>.claude/agents/</code></td><td>角色定義：pm／sa／qa-expert 和實作代理（例 backend／frontend-expert）。實作代理含「程式設計原則」，最後一節寫本專案的技術重點</td><td>專案（<code>-Update</code> 只自動改你沒動過的小節）</td></tr>
       <tr><td><code>.claude/workflow.json</code></td><td>實作代理各管哪些檔、哪些算產品程式、分支命名、工單系統</td><td>專案</td></tr>
       <tr><td><code>.claude/settings.json</code></td><td>註冊兩支 hook（只合併，不動你其他的設定）</td><td>專案</td></tr>
       <tr><td><code>.claude/skills/hd5-*</code>、<code>.agents/skills/hd5-*</code></td><td>skills，Claude 和 Codex 各一份</td><td>套件（用 <code>-Update</code> 更新）</td></tr>
@@ -193,6 +194,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
       <tr><td><code>AI_Service/verify/</code></td><td>功能地圖：每個主要功能怎麼進去、怎麼操作、成功長怎樣</td><td>專案</td></tr>
       <tr><td><code>AI_Service/spec/&lt;案名&gt;/</code></td><td>之後每張案子的產物（需求、設計、測試報告、驗收紀錄）</td><td>專案</td></tr>
       <tr><td><code>AI_Service/onboard/</code></td><td>導入紀錄：掃描結果、架構說明、問答紀錄、舊規則去向表、原檔備份</td><td>專案（留著查）</td></tr>
+      <tr><td><code>AI_Service/onboard/agent-base/</code></td><td>代理範本的基準：記住上次同步的是哪一版範本，<code>-Update</code> 靠它分辨哪些小節是你改的。要進版控，不要手改</td><td>套件（<code>-Update</code> 維護）</td></tr>
     </tbody>
   </table></div>
 
@@ -217,6 +219,7 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
       <tr><td>部署到測試站後</td><td><span class="say">上站驗一下</span><span class="say">站上關卡</span></td><td>先確認站上跑的是這一版，再逐條操作驗收項目</td></tr>
       <tr><td>收尾交接</td><td><span class="say">寫結案報告</span></td><td>產生固定 8 節的結案報告，有工單系統時掛到工單</td></tr>
       <tr><td>改工單狀態</td><td><span class="say">改成待驗收</span><span class="say">在工單留言</span></td><td>改狀態前自動檢查證據齊不齊；留言內容會先給你看</td></tr>
+      <tr><td>套件更新後代理有衝突</td><td><span class="say">更新代理</span></td><td>逐節合併代理檔裡你和套件都改過的小節，給你看差異、你同意才寫入</td></tr>
       <tr><td>評估要不要重構</td><td><span class="say">架構健檢</span></td><td>產出候選重構點的 HTML 報告；只規劃，不寫程式</td></tr>
     </tbody>
   </table></div>
@@ -237,10 +240,10 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
   <div class="flow">
     <div class="stage"><div class="who">起點<b>主對話</b></div><div class="what"><p>讀工單或需求、建案資料夾、判定路線和高風險。</p><span class="you">你：確認路線</span></div></div>
     <div class="stage"><div class="who">需求<b>PM</b></div><div class="what"><p>分析需求、寫驗收條件，接著自動進質詢輪，把沒講清楚的地方問到拍板。</p><span class="you">你：回答質詢題</span></div></div>
-    <div class="stage"><div class="who">設計<b>SA</b></div><div class="what"><p>掃描專案、做技術設計，同樣自動進質詢輪。高風險案子接著跑對抗輪。</p><span class="gate">質詢閘：派 SA／實作／QA 前檢查</span></div></div>
-    <div class="stage"><div class="who">實作<b>實作代理</b></div><div class="what"><p>QA 先交一份會失敗的測試 → 實作讓它轉綠 → 重構 → 用 mutation 確認測試抓得到錯。修 bug 前先列出所有同類的位置。每完成一條驗收條件，就照功能地圖自己驗一次。</p><span class="gate">主對話改檔 hook：主對話不准直接改產品程式</span><span class="gate">功能地圖檢查</span></div></div>
+    <div class="stage"><div class="who">設計<b>SA</b></div><div class="what"><p>掃描專案、做技術設計，同樣自動進質詢輪。設計質詢多一個「設計形狀」分支：資料形狀、領域規則放哪、外部輸入在哪裡檢查、重跑會不會出錯、有沒有共用狀態、要重新設計還是接上去；重要的決定列 2～3 個方案並排比較。高風險案子接著跑對抗輪。</p><span class="gate">質詢閘：派 SA／實作／QA 前檢查</span></div></div>
+    <div class="stage"><div class="who">實作<b>實作代理</b></div><div class="what"><p>QA 先交一份會失敗的測試 → 實作讓它轉綠 → 重構 → 用 mutation 確認測試抓得到錯。修 bug 前先列出所有同類的位置。寫程式照代理檔的「程式設計原則」：先刪再加、檢查放在系統邊界、加防護不等於修好、遷移完同一波刪掉舊 API。每完成一條驗收條件，就照功能地圖自己驗一次。</p><span class="gate">主對話改檔 hook：主對話不准直接改產品程式</span><span class="gate">功能地圖檢查</span></div></div>
     <div class="stage"><div class="who">測試<b>QA</b></div><div class="what"><p>對照每個情境讀測試程式、出測試報告、檢查資安。</p></div></div>
-    <div class="stage"><div class="who">審查<b>第三方</b></div><div class="what"><p>沒參與開發的 Codex 或全新子代理唯讀審查整案。只修 P0／P1，P2 以下列為已知限制。</p><span class="gate">獨立驗收：通過才能合併</span></div></div>
+    <div class="stage"><div class="who">審查<b>第三方</b></div><div class="what"><p>沒參與開發的 Codex 或全新子代理唯讀審查整案，除了驗收項目和證據，也看設計品質（防護有沒有蓋住根本原因、舊 API 或相容層有沒有留著）。只修 P0／P1，P2 以下列為已知限制。</p><span class="gate">獨立驗收：通過才能合併</span></div></div>
     <div class="stage"><div class="who">上站<b>主對話</b></div><div class="what"><p>合併、部署到測試環境，然後逐條在站上操作到最終結果、留證據。</p><span class="gate">站上關卡：通過才能送驗收</span><span class="you">你：同意 push／部署</span></div></div>
     <div class="stage"><div class="who">結案<b>主對話</b></div><div class="what"><p>寫結案報告（固定 8 節，給下一張工單參考）。改工單狀態前會自動檢查：獨立驗收過了沒、站上關卡過了沒、每個 Pass 都有證據嗎。</p><span class="gate">工單閘</span><span class="you">你：同意改工單、發通知</span></div></div>
   </div>
@@ -277,9 +280,13 @@ footer{margin-top:64px;border-top:1px solid var(--line);padding-top:16px;color:v
 <pre><code>&amp; ...\HD5Skills\install.ps1 -RepoRoot D:\work\MyRepo [-ProjectDir src\MyApp] -Update</code></pre>
   <div class="grid">
     <div class="card"><h4>會更新</h4><p><code>hd5-*</code> skills（Claude 和 Codex 兩份）、<code>AI_Service/hd5-tools/</code> 底下的工具。有用 Azure DevOps 時，工單工具也一起更新。</p></div>
-    <div class="card"><h4>不會動</h4><p><code>AGENTS.md</code>、<code>CLAUDE.md</code>、<code>.claude/agents/</code>、<code>workflow.json</code>、<code>settings.json</code>、案子和功能地圖、你的 PAT 檔。</p></div>
+    <div class="card"><h4>代理檔逐節比對</h4><p><code>.claude/agents/</code> 以小節為單位比對三份：上次同步的範本、新範本、你現在的檔。你沒改過的節自動換新版，範本新加的節自動補上，「本專案技術架構重點」永遠不動。</p></div>
+    <div class="card"><h4>不會動</h4><p><code>AGENTS.md</code>、<code>CLAUDE.md</code>、<code>workflow.json</code>、<code>settings.json</code>、案子和功能地圖、你的 PAT 檔。</p></div>
     <div class="card"><h4>不會刪</h4><p>套件已經不含的舊檔只會列出來，由你確認要不要刪。</p></div>
   </div>
+  <div class="note"><p><strong>你和套件都改過的小節，交給 AI 合併。</strong>這種小節（或第一次三方比對、還沒有基準時內容不同的小節）<code>-Update</code> 不會動，會列在 <code>AI_Service/onboard/agent-update.md</code>，每節附三個版本。在專案啟動 Claude Code 說「更新代理」，AI 會保留你的調整、採用套件的新規則，矛盾的地方問你；你同意才寫入。某個代理合併完，再跑一次：</p>
+<pre><code>&amp; ...\HD5Skills\install.ps1 -RepoRoot D:\work\MyRepo [-ProjectDir src\MyApp] -Update -AcceptAgents sa-expert</code></pre>
+<p>它把那個代理的基準設成目前範本，下次就不再列衝突。實作代理靠 <code>workflow.json</code> 的 <code>gateRole</code>（backend／frontend）對到範本，其他 gateRole 只提醒、不比對。</p></div>
   <div class="note warn"><p><code>-Update</code> 不能跟 <code>-Force</code> 一起用。<code>-Force</code> 會把代理和 <code>workflow.json</code> 也覆蓋回範本，等於把導入時調好的內容洗掉，除非你確定要重來，否則不要用。</p></div>
 </section>
 
